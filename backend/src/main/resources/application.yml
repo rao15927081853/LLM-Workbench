@@ -1,0 +1,20 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: llm-workbench-backend
+  mvc:
+    async:
+      request-timeout: 300000
+
+# Optional server-side defaults. The frontend can override baseUrl / apiKey per request.
+# You may also set them here (or via env vars) to avoid exposing the key to the browser.
+workbench:
+  image:
+    default-base-url: ${IMAGE_BASE_URL:}
+    default-api-key: ${IMAGE_API_KEY:}
+
+logging:
+  level:
+    com.workbench: INFO

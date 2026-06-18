@@ -1,0 +1,24 @@
+services:
+  backend:
+    build: ./backend
+    container_name: workbench-backend
+    restart: unless-stopped
+    environment:
+      # 可选：在服务端预置默认地址与 Key（前端请求中可省略对应字段）。
+      # 留空则要求前端在网页里填写。
+      IMAGE_BASE_URL: ${IMAGE_BASE_URL:-}
+      IMAGE_API_KEY: ${IMAGE_API_KEY:-}
+    expose:
+      - "8080"
+    # 如需直接调试后端，取消下面注释即可对外暴露 8080。
+    # ports:
+    #   - "8080:8080"
+
+  frontend:
+    build: ./frontend
+    container_name: workbench-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8088:80"
