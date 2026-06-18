@@ -7,6 +7,11 @@ spring:
   mvc:
     async:
       request-timeout: 300000
+  servlet:
+    multipart:
+      # 图生图参考图可能较大，放宽单文件与整请求上限。
+      max-file-size: 25MB
+      max-request-size: 120MB
 
 # Optional server-side defaults. The frontend can override baseUrl / apiKey per request.
 # You may also set them here (or via env vars) to avoid exposing the key to the browser.

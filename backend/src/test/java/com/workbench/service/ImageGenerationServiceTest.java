@@ -14,30 +14,36 @@ class ImageGenerationServiceTest {
     @Test
     void gptModelAppendsV1() {
         assertEquals("https://api.openai.com/v1/images/generations",
-                service.resolveEndpoint("https://api.openai.com", "gpt-image-2"));
+                service.resolveEndpoint("https://api.openai.com", "gpt-image-2", "/images/generations"));
     }
 
     @Test
     void gptModelDoesNotDuplicateV1() {
         assertEquals("https://api.openai.com/v1/images/generations",
-                service.resolveEndpoint("https://api.openai.com/v1", "gpt-image-2"));
+                service.resolveEndpoint("https://api.openai.com/v1", "gpt-image-2", "/images/generations"));
     }
 
     @Test
     void trailingSlashIsStripped() {
         assertEquals("https://proxy.host/v1/images/generations",
-                service.resolveEndpoint("https://proxy.host/", "gpt-image-1"));
+                service.resolveEndpoint("https://proxy.host/", "gpt-image-1", "/images/generations"));
     }
 
     @Test
     void nonGptModelDoesNotAppendV1() {
         assertEquals("https://proxy.host/images/generations",
-                service.resolveEndpoint("https://proxy.host", "dall-e-3"));
+                service.resolveEndpoint("https://proxy.host", "dall-e-3", "/images/generations"));
     }
 
     @Test
     void nonGptKeepsExistingV1() {
         assertEquals("https://proxy.host/v1/images/generations",
-                service.resolveEndpoint("https://proxy.host/v1", "dall-e-3"));
+                service.resolveEndpoint("https://proxy.host/v1", "dall-e-3", "/images/generations"));
+    }
+
+    @Test
+    void editsPathForGptModel() {
+        assertEquals("https://api.openai.com/v1/images/edits",
+                service.resolveEndpoint("https://api.openai.com", "gpt-image-1", "/images/edits"));
     }
 }

@@ -1,113 +1,261 @@
-import React, { useEffect, useState } from 'react'
-import { generateImages } from './api'
+import React, { useEffect, useMemo, useState } from 'react'
+import {
+  Layout,
+  Tabs,
+  Card,
+  Input,
+  InputNumber,
+  Select,
+  AutoComplete,
+  Button,
+  Tooltip,
+  Popover,
+  Alert,
+  Tag,
+  Badge,
+  Spin,
+  Empty,
+  Typography,
+  Space,
+  Upload,
+} from 'antd'
+import {
+  PlusOutlined,
+  WalletOutlined,
+  CustomerServiceOutlined,
+  ThunderboltOutlined,
+  EyeInvisibleOutlined,
+  EyeOutlined,
+  DownloadOutlined,
+  ExpandOutlined,
+  PictureOutlined,
+} from '@ant-design/icons'
+import { generateImages, editImages } from './api'
 import {
   MODEL_PRESETS,
-  SIZE_OPTIONS,
+  RESOLUTION_OPTIONS,
+  ASPECT_OPTIONS,
   QUALITY_OPTIONS,
   BACKGROUND_OPTIONS,
   FORMAT_OPTIONS,
+  computeSize,
 } from './constants'
 
-const STORAGE_KEY = 'llm-workbench-config'
+const { Header, Sider, Content } = Layout
+const { TextArea } = Input
+const { Text } = Typography
 
-function loadConfig() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : {}
-  } catch {
-    return {}
+const STORAGE_KEY = 'llm-workbench-tasks'
+const LEGACY_KEY = 'llm-workbench-config'
+
+function uid() {
+  if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID()
+  return 'task-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
+}
+
+// 单个任务的完整数据：每个任务持有独立配置、参数与结果。
+function defaultTask(seed = {}, index = 1) {
+  return {
+    id: uid(),
+    name: seed.name || `任务 ${index}`,
+    baseUrl: seed.baseUrl || '',
+    apiKey: seed.apiKey || '',
+    model: seed.model || 'gpt-image-2',
+    resolution: seed.resolution || 1024,
+    aspect: seed.aspect || '1:1',
+    quality: seed.quality || 'auto',
+    n: seed.n || 1,
+    background: seed.background || '',
+    outputFormat: seed.outputFormat || '',
+    prompt: seed.prompt || '',
+    // 运行时状态（不持久化）
+    fileList: [],
+    images: [],
+    endpoint: '',
+    loading: false,
+    error: '',
   }
 }
 
+// 仅持久化配置与提示词；图片/加载态等运行时字段不写入（base64 会撑爆 localStorage）。
+function persist(tasks, activeId) {
+  try {
+    const slim = tasks.map((t) => ({
+      id: t.id,
+      name: t.name,
+      baseUrl: t.baseUrl,
+      apiKey: t.apiKey,
+      model: t.model,
+      resolution: t.resolution,
+      aspect: t.aspect,
+      quality: t.quality,
+      n: t.n,
+      background: t.background,
+      outputFormat: t.outputFormat,
+      prompt: t.prompt,
+    }))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ tasks: slim, activeId }))
+  } catch {
+    /* 忽略写入失败（如隐私模式） */
+  }
+}
+
+function loadInitial() {
+  // 1) 优先读多任务存储
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed.tasks && parsed.tasks.length) {
+        const tasks = parsed.tasks.map((t) => defaultTask(t))
+        const activeId =
+          tasks.find((t) => t.id === parsed.activeId)?.id || tasks[0].id
+        return { tasks, activeId }
+      }
+    }
+  } catch {
+    /* 继续尝试迁移 */
+  }
+  // 2) 迁移旧版单配置
+  try {
+    const legacy = localStorage.getItem(LEGACY_KEY)
+    if (legacy) {
+      const cfg = JSON.parse(legacy)
+      const t = defaultTask(cfg, 1)
+      return { tasks: [t], activeId: t.id }
+    }
+  } catch {
+    /* 落到默认 */
+  }
+  // 3) 全新空白任务
+  const t = defaultTask({}, 1)
+  return { tasks: [t], activeId: t.id }
+}
+
 export default function App() {
-  const saved = loadConfig()
+  const initial = useMemo(loadInitial, [])
+  const [tasks, setTasks] = useState(initial.tasks)
+  const [activeId, setActiveId] = useState(initial.activeId)
+  // 联系客服气泡的开关
+  const [showContact, setShowContact] = useState(false)
+  // 每个任务各自的「已揭示」图片索引集合：{ [taskId]: { [imgIndex]: true } }
+  const [revealed, setRevealed] = useState({})
 
-  // Connection config (persisted)
-  const [baseUrl, setBaseUrl] = useState(saved.baseUrl || '')
-  const [apiKey, setApiKey] = useState(saved.apiKey || '')
-  const [model, setModel] = useState(saved.model || 'gpt-image-2')
+  const active = tasks.find((t) => t.id === activeId) || tasks[0]
 
-  // Generation params (persisted)
-  const [size, setSize] = useState(saved.size || '1024x1024')
-  const [quality, setQuality] = useState(saved.quality || 'auto')
-  const [n, setN] = useState(saved.n || 1)
-  const [background, setBackground] = useState(saved.background || '')
-  const [outputFormat, setOutputFormat] = useState(saved.outputFormat || '')
-
-  // Session state
-  const [prompt, setPrompt] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [images, setImages] = useState([])
-  const [endpoint, setEndpoint] = useState('')
-  const [showKey, setShowKey] = useState(false)
-
-  // Persist config + params whenever they change.
+  // 配置/提示词变化时持久化。
   useEffect(() => {
-    const cfg = { baseUrl, apiKey, model, size, quality, n, background, outputFormat }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg))
-  }, [baseUrl, apiKey, model, size, quality, n, background, outputFormat])
+    persist(tasks, activeId)
+  }, [tasks, activeId])
 
-  const isGpt = model.trim().toLowerCase().startsWith('gpt')
+  // 局部更新某个任务（按 id），不影响其它任务 —— 这是并发生成的基础。
+  function patchTask(id, patch) {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, ...patch } : t))
+    )
+  }
 
-  async function handleGenerate() {
-    setError('')
-    if (!baseUrl.trim()) {
-      setError('请先配置请求地址 (Base URL)')
+  // 更新当前活动任务的字段。
+  function patchActive(patch) {
+    patchTask(active.id, patch)
+  }
+
+  function addTask() {
+    // 新任务克隆当前任务的连接配置，省去重复填写。
+    const seed = {
+      baseUrl: active.baseUrl,
+      apiKey: active.apiKey,
+      model: active.model,
+      resolution: active.resolution,
+      aspect: active.aspect,
+      quality: active.quality,
+      n: active.n,
+      background: active.background,
+      outputFormat: active.outputFormat,
+    }
+    const t = defaultTask(seed, tasks.length + 1)
+    setTasks((prev) => [...prev, t])
+    setActiveId(t.id)
+  }
+
+  function closeTask(id, e) {
+    e.stopPropagation()
+    setTasks((prev) => {
+      if (prev.length === 1) return prev // 至少保留一个任务
+      const idx = prev.findIndex((t) => t.id === id)
+      const next = prev.filter((t) => t.id !== id)
+      if (id === activeId) {
+        const fallback = next[idx] || next[idx - 1] || next[0]
+        setActiveId(fallback.id)
+      }
+      return next
+    })
+  }
+
+  // 对指定任务发起生成。按 id 局部更新，因此多个任务可同时进行、互不干扰。
+  async function handleGenerate(task) {
+    if (!task.baseUrl.trim()) {
+      patchTask(task.id, { error: '请先配置请求地址 (Base URL)' })
       return
     }
-    if (!apiKey.trim()) {
-      setError('请先配置 API Key')
+    if (!task.apiKey.trim()) {
+      patchTask(task.id, { error: '请先配置 API Key' })
       return
     }
-    if (!prompt.trim()) {
-      setError('请输入提示词 (Prompt)')
+    if (!task.prompt.trim()) {
+      patchTask(task.id, { error: '请输入提示词 (Prompt)' })
       return
     }
 
-    setLoading(true)
+    const size = computeSize(Number(task.resolution), task.aspect)
+    // 取出真正的 File 对象（antd Upload 在 beforeUpload 返回 false 时存于 originFileObj）
+    const files = (task.fileList || []).map((f) => f.originFileObj || f).filter(Boolean)
+    patchTask(task.id, { loading: true, error: '', images: [] })
+    setRevealed((r) => ({ ...r, [task.id]: {} }))
+
+    const params = {
+      baseUrl: task.baseUrl.trim(),
+      apiKey: task.apiKey.trim(),
+      model: task.model.trim(),
+      prompt: task.prompt.trim(),
+      size,
+      quality: task.quality,
+      n: Number(task.n) || 1,
+      background: task.background || undefined,
+      outputFormat: task.outputFormat || undefined,
+    }
+
     try {
-      const data = await generateImages({
-        baseUrl: baseUrl.trim(),
-        apiKey: apiKey.trim(),
-        model: model.trim(),
-        prompt: prompt.trim(),
-        size,
-        quality,
-        n: Number(n) || 1,
-        background: background || undefined,
-        outputFormat: outputFormat || undefined,
+      // 有参考图 → 图生图 (multipart edits)；否则 → 文生图 (json generations)
+      const data = files.length > 0
+        ? await editImages(params, files)
+        : await generateImages(params)
+      patchTask(task.id, {
+        images: data.images || [],
+        endpoint: data.resolvedEndpoint || '',
+        loading: false,
       })
-      setImages(data.images || [])
-      setEndpoint(data.resolvedEndpoint || '')
     } catch (e) {
-      setError(e.message)
-    } finally {
-      setLoading(false)
+      patchTask(task.id, { error: e.message, loading: false })
     }
   }
 
-  function imageSrc(item) {
+  function imageSrc(task, item) {
     if (item.type === 'b64_json') {
-      const fmt = outputFormat || 'png'
+      const fmt = task.outputFormat || 'png'
       return `data:image/${fmt};base64,${item.value}`
     }
     return item.value
   }
 
-  // 在新标签页打开查看，避免占用当前窗口导致返回后图片丢失。
-  function viewImage(item) {
-    window.open(imageSrc(item), '_blank', 'noopener,noreferrer')
+  function viewImage(task, item) {
+    window.open(imageSrc(task, item), '_blank', 'noopener,noreferrer')
   }
 
-  // 触发下载且不离开当前页面。
-  // base64 直接走 data URL；远程 URL 先尝试 fetch 成 blob 下载，
-  // 跨域受限失败时回退到新标签页打开（绝不在当前窗口跳转）。
-  async function downloadImage(item, index) {
-    const fmt = outputFormat || 'png'
-    const filename = `image-${index + 1}.${fmt}`
-    const src = imageSrc(item)
-
+  async function downloadImage(task, item, index) {
+    const fmt = task.outputFormat || 'png'
+    const filename = `${task.name}-${index + 1}.${fmt}`
+    const src = imageSrc(task, item)
     try {
       let blobUrl
       if (item.type === 'b64_json') {
@@ -127,161 +275,363 @@ export default function App() {
         setTimeout(() => URL.revokeObjectURL(blobUrl), 4000)
       }
     } catch {
-      // 跨域无法读取时，退而求其次：新标签页打开，用户可自行右键保存。
       window.open(src, '_blank', 'noopener,noreferrer')
     }
   }
 
-  return (
-    <div className="layout">
-      <aside className="sidebar">
-        <h1 className="brand">🎨 图像工作台</h1>
+  function markRevealed(taskId, imgIndex) {
+    setRevealed((r) => ({
+      ...r,
+      [taskId]: { ...(r[taskId] || {}), [imgIndex]: true },
+    }))
+  }
 
-        <section className="panel">
-          <h2>连接配置</h2>
+  const isGpt = active.model.trim().toLowerCase().startsWith('gpt')
+  const activeSize = computeSize(Number(active.resolution), active.aspect)
+  const activeRevealed = revealed[active.id] || {}
 
-          <label className="field">
-            <span>请求地址 (Base URL)</span>
-            <input
-              type="text"
-              placeholder="https://api.openai.com"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-            />
-          </label>
-
-          <label className="field">
-            <span>API Key</span>
-            <div className="key-row">
-              <input
-                type={showKey ? 'text' : 'password'}
-                placeholder="sk-..."
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-              />
-              <button type="button" className="ghost" onClick={() => setShowKey((s) => !s)}>
-                {showKey ? '隐藏' : '显示'}
-              </button>
-            </div>
-          </label>
-
-          <label className="field">
-            <span>模型 (Model)</span>
-            <input
-              type="text"
-              list="model-presets"
-              placeholder="gpt-image-2"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-            />
-            <datalist id="model-presets">
-              {MODEL_PRESETS.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
-          </label>
-
-          {isGpt && (
-            <p className="hint">检测到 GPT 系列模型，将自动在请求地址后追加 <code>/v1</code>。</p>
-          )}
-        </section>
-
-        <section className="panel">
-          <h2>参数配置</h2>
-
-          <label className="field">
-            <span>尺寸 (Size)</span>
-            <select value={size} onChange={(e) => setSize(e.target.value)}>
-              {SIZE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field">
-            <span>清晰度 (Quality)</span>
-            <select value={quality} onChange={(e) => setQuality(e.target.value)}>
-              {QUALITY_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field">
-            <span>数量 (n)</span>
-            <input
-              type="number"
-              min="1"
-              max="10"
-              value={n}
-              onChange={(e) => setN(e.target.value)}
-            />
-          </label>
-
-          <label className="field">
-            <span>背景 (Background)</span>
-            <select value={background} onChange={(e) => setBackground(e.target.value)}>
-              {BACKGROUND_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field">
-            <span>输出格式 (Output Format)</span>
-            <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)}>
-              {FORMAT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </label>
-        </section>
-      </aside>
-
-      <main className="content">
-        <section className="prompt-bar">
-          <textarea
-            placeholder="描述你想生成的图像，例如：一只在霓虹灯城市街道上奔跑的柴犬，电影感光照"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            rows={3}
+  // Tabs（可编辑卡片式）：原生支持新增/关闭，标签内嵌状态指示。
+  const tabItems = tasks.map((t) => ({
+    key: t.id,
+    closable: tasks.length > 1,
+    label: (
+      <span className="tab-label" title={t.prompt || t.name}>
+        {t.loading ? (
+          <Spin size="small" />
+        ) : (
+          <Badge
+            count={t.images.length}
+            showZero
+            color={t.images.length ? '#5b6cff' : '#c9ccd6'}
+            size="small"
           />
-          <button className="primary" onClick={handleGenerate} disabled={loading}>
-            {loading ? '生成中…' : '生成图像'}
-          </button>
-        </section>
+        )}
+        <span className="tab-text">{t.name}</span>
+      </span>
+    ),
+  }))
 
-        {error && <div className="error">{error}</div>}
-        {endpoint && <div className="endpoint">实际请求地址: <code>{endpoint}</code></div>}
+  function onTabEdit(targetKey, action) {
+    if (action === 'add') {
+      addTask()
+    } else {
+      closeTask(targetKey, { stopPropagation() {} })
+    }
+  }
 
-        <section className="gallery">
-          {loading && <div className="skeleton">正在生成，请稍候…</div>}
-          {!loading && images.length === 0 && !error && (
-            <div className="empty">填写左侧配置与提示词，点击「生成图像」开始。</div>
-          )}
-          {images.map((item, i) => (
-            <figure key={i} className="card">
-              <img
-                src={imageSrc(item)}
-                alt={`result-${i}`}
-                className="clickable"
-                title="点击在新标签页查看"
-                onClick={() => viewImage(item)}
-              />
-              {item.revisedPrompt && (
-                <figcaption title={item.revisedPrompt}>{item.revisedPrompt}</figcaption>
-              )}
-              <button
-                type="button"
-                className="download"
-                onClick={() => downloadImage(item, i)}
-              >
-                下载
-              </button>
-            </figure>
-          ))}
-        </section>
-      </main>
+  const contactContent = (
+    <div className="contact-pop">
+      <img
+        src="/wechat-qr.png"
+        alt="客服微信二维码"
+        className="contact-qr"
+        onError={(e) => {
+          e.currentTarget.style.display = 'none'
+          e.currentTarget.nextSibling.style.display = 'block'
+        }}
+      />
+      <Text type="danger" style={{ display: 'none' }}>
+        二维码图片未找到，请放到 frontend/public/wechat-qr.png
+      </Text>
     </div>
   )
+
+  return (
+    <Layout className="app">
+      <Header className="taskbar">
+        <div className="logo">
+          <svg className="logo-mark" viewBox="0 0 64 64" width="30" height="30" aria-hidden="true">
+            <defs>
+              <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stopColor="#5b6cff" />
+                <stop offset="1" stopColor="#8a6bff" />
+              </linearGradient>
+            </defs>
+            <rect width="64" height="64" rx="16" fill="url(#lg)" />
+            <circle cx="22" cy="24" r="6" fill="#fff" />
+            <circle cx="42" cy="22" r="5" fill="#ffd86b" />
+            <path d="M14 48l12-16 9 11 7-8 8 13z" fill="#fff" />
+          </svg>
+          <span className="logo-name">大模型生图平台</span>
+        </div>
+
+        <div className="tabs-wrap">
+          <Tabs
+            type="editable-card"
+            activeKey={activeId}
+            onChange={setActiveId}
+            onEdit={onTabEdit}
+            items={tabItems}
+            addIcon={<span className="add-tab"><PlusOutlined /> 新建任务</span>}
+            hideAdd={false}
+          />
+        </div>
+
+        <Space className="taskbar-actions" size={10}>
+          <Button
+            type="primary"
+            ghost
+            icon={<WalletOutlined />}
+            href="http://47.253.7.24:3000"
+            target="_blank"
+          >
+            充值额度
+          </Button>
+          <Popover
+            content={contactContent}
+            title="微信扫码联系客服"
+            trigger="click"
+            placement="bottomRight"
+            open={showContact}
+            onOpenChange={setShowContact}
+          >
+            <Button icon={<CustomerServiceOutlined />}>联系客服</Button>
+          </Popover>
+        </Space>
+      </Header>
+
+      <Layout className="layout">
+        <Sider className="sidebar" width={340} theme="light">
+          <Card size="small" className="panel" title="任务">
+            <div className="field">
+              <label>任务名称</label>
+              <Input
+                value={active.name}
+                onChange={(e) => patchActive({ name: e.target.value })}
+                placeholder="任务名称"
+              />
+            </div>
+          </Card>
+
+          <Card size="small" className="panel" title="连接配置">
+            <div className="field">
+              <label>请求地址 (Base URL)</label>
+              <Input
+                placeholder="https://api.openai.com"
+                value={active.baseUrl}
+                onChange={(e) => patchActive({ baseUrl: e.target.value })}
+              />
+            </div>
+            <div className="field">
+              <label>API Key</label>
+              <Input.Password
+                placeholder="sk-..."
+                value={active.apiKey}
+                onChange={(e) => patchActive({ apiKey: e.target.value })}
+                iconRender={(v) => (v ? <EyeOutlined /> : <EyeInvisibleOutlined />)}
+              />
+            </div>
+            <div className="field">
+              <label>模型 (Model)</label>
+              <AutoComplete
+                value={active.model}
+                onChange={(v) => patchActive({ model: v })}
+                options={MODEL_PRESETS.map((m) => ({ value: m }))}
+                placeholder="gpt-image-2"
+                filterOption={(input, opt) =>
+                  opt.value.toLowerCase().includes(input.toLowerCase())
+                }
+              >
+                <Input />
+              </AutoComplete>
+            </div>
+            {isGpt && (
+              <Alert
+                type="info"
+                showIcon
+                banner
+                message={
+                  <span>检测到 GPT 系列模型，将自动在请求地址后追加 <code>/v1</code></span>
+                }
+              />
+            )}
+          </Card>
+
+          <Card size="small" className="panel" title="参数配置">
+            <div className="field-grid">
+              <div className="field">
+                <label>分辨率</label>
+                <Select
+                  value={active.resolution}
+                  onChange={(v) => patchActive({ resolution: Number(v) })}
+                  options={RESOLUTION_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                />
+              </div>
+              <div className="field">
+                <label>宽高比</label>
+                <Select
+                  value={active.aspect}
+                  onChange={(v) => patchActive({ aspect: v })}
+                  options={ASPECT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                />
+              </div>
+              <div className="field">
+                <label>清晰度</label>
+                <Select
+                  value={active.quality}
+                  onChange={(v) => patchActive({ quality: v })}
+                  options={QUALITY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                />
+              </div>
+              <div className="field">
+                <label>数量 (n)</label>
+                <InputNumber
+                  min={1}
+                  max={10}
+                  value={active.n}
+                  onChange={(v) => patchActive({ n: v })}
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div className="field">
+                <label>背景</label>
+                <Select
+                  value={active.background}
+                  onChange={(v) => patchActive({ background: v })}
+                  options={BACKGROUND_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                />
+              </div>
+              <div className="field">
+                <label>输出格式</label>
+                <Select
+                  value={active.outputFormat}
+                  onChange={(v) => patchActive({ outputFormat: v })}
+                  options={FORMAT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                />
+              </div>
+            </div>
+            <div className="size-tag">
+              实际尺寸 <Tag color="blue">{activeSize}</Tag>
+            </div>
+          </Card>
+        </Sider>
+
+        <Content className="content">
+          <Card className="prompt-card" size="small">
+            <div className="upload-row">
+              <Upload
+                listType="picture-card"
+                fileList={active.fileList}
+                multiple
+                accept="image/*"
+                beforeUpload={() => false}
+                onChange={({ fileList }) => patchActive({ fileList })}
+              >
+                {active.fileList.length >= 10 ? null : (
+                  <div className="upload-trigger">
+                    <PictureOutlined />
+                    <div>参考图</div>
+                  </div>
+                )}
+              </Upload>
+              <Text type="secondary" className="upload-hint">
+                可上传 0 / 1 / 多张参考图。上传后走「图生图」，留空则「文生图」。
+              </Text>
+            </div>
+            <div className="prompt-row">
+              <TextArea
+                placeholder="描述你想生成的图像，例如：一只在霓虹灯城市街道上奔跑的柴犬，电影感光照"
+                value={active.prompt}
+                onChange={(e) => patchActive({ prompt: e.target.value })}
+                autoSize={{ minRows: 3, maxRows: 6 }}
+              />
+              <Button
+                type="primary"
+                size="large"
+                icon={<ThunderboltOutlined />}
+                loading={active.loading}
+                onClick={() => handleGenerate(active)}
+                className="generate-btn"
+              >
+                {active.loading
+                  ? '生成中…'
+                  : active.fileList.length > 0
+                    ? '图生图'
+                    : '生成图像'}
+              </Button>
+            </div>
+          </Card>
+
+          {active.error && (
+            <Alert
+              type="error"
+              showIcon
+              closable
+              message="生成失败"
+              description={active.error}
+              className="result-alert"
+              onClose={() => patchActive({ error: '' })}
+            />
+          )}
+          {active.endpoint && (
+            <Text type="secondary" className="endpoint">
+              实际请求地址：<code>{active.endpoint}</code>
+            </Text>
+          )}
+
+          <div className="gallery">
+            {active.loading &&
+              Array.from({ length: Number(active.n) || 1 }).map((_, i) => (
+                <div
+                  key={`ph-${i}`}
+                  className="card placeholder"
+                  style={{ aspectRatio: activeSize.replace('x', ' / ') }}
+                >
+                  <div className="shimmer" />
+                  <Spin tip="生成中…" />
+                </div>
+              ))}
+            {!active.loading && active.images.length === 0 && !active.error && (
+              <div className="empty-wrap">
+                <Empty description="填写左侧配置与提示词，点击「生成图像」开始" />
+              </div>
+            )}
+            {!active.loading &&
+              active.images.map((item, i) => (
+                <Card
+                  key={i}
+                  className="img-card"
+                  hoverable
+                  cover={
+                    <div className="img-cover">
+                      <img
+                        src={imageSrc(active, item)}
+                        alt={`result-${i}`}
+                        className={`reveal${activeRevealed[i] ? ' revealed' : ''}`}
+                        onClick={() => viewImage(active, item)}
+                        onLoad={() => markRevealed(active.id, i)}
+                      />
+                      <div className="img-overlay">
+                        <Tooltip title="新标签页查看">
+                          <Button
+                            shape="circle"
+                            icon={<ExpandOutlined />}
+                            onClick={() => viewImage(active, item)}
+                          />
+                        </Tooltip>
+                        <Tooltip title="下载">
+                          <Button
+                            shape="circle"
+                            type="primary"
+                            icon={<DownloadOutlined />}
+                            onClick={() => downloadImage(active, item, i)}
+                          />
+                        </Tooltip>
+                      </div>
+                    </div>
+                  }
+                >
+                  {item.revisedPrompt && (
+                    <Text type="secondary" ellipsis={{ tooltip: item.revisedPrompt }}>
+                      {item.revisedPrompt}
+                    </Text>
+                  )}
+                </Card>
+              ))}
+          </div>
+        </Content>
+      </Layout>
+    </Layout>
+  )
 }
+
