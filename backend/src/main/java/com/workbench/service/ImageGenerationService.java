@@ -9,6 +9,7 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -139,6 +140,33 @@ public class ImageGenerationService {
         } catch (IOException e) {
             throw new UncheckedIOException("读取上传图片失败: " + filename, e);
         }
+    }
+
+    /** Fetched remote image bytes plus its content type, for the download proxy. */
+    public record RemoteImage(Resource resource, String contentType) {
+    }
+
+    /**
+     * Fetches a remote image URL server-side (bypasses browser CORS) and returns its
+     * bytes + content type so the controller can stream it as an attachment.
+     */
+    public RemoteImage fetchRemote(String url) {
+        if (!StringUtils.hasText(url) || !(url.startsWith("http://") || url.startsWith("https://"))) {
+            throw new IllegalArgumentException("无效的图片地址");
+        }
+        RestClient client = restClientBuilder.build();
+        ResponseEntity<byte[]> resp = client.get()
+                .uri(url)
+                .retrieve()
+                .toEntity(byte[].class);
+
+        byte[] body = resp.getBody();
+        if (body == null || body.length == 0) {
+            throw new IllegalArgumentException("下载图片失败：远程返回空内容");
+        }
+        MediaType ct = resp.getHeaders().getContentType();
+        String contentType = ct != null ? ct.toString() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+        return new RemoteImage(new ByteArrayResource(body), contentType);
     }
 
     /**

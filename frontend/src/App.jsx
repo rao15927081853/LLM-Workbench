@@ -18,6 +18,7 @@ import {
   Typography,
   Space,
   Upload,
+  Drawer,
 } from 'antd'
 import {
   PlusOutlined,
@@ -29,6 +30,7 @@ import {
   DownloadOutlined,
   ExpandOutlined,
   PictureOutlined,
+  SettingOutlined,
 } from '@ant-design/icons'
 import { generateImages, editImages } from './api'
 import {
@@ -138,6 +140,8 @@ export default function App() {
   const [activeId, setActiveId] = useState(initial.activeId)
   // 联系客服气泡的开关
   const [showContact, setShowContact] = useState(false)
+  // 手机端配置抽屉的开关
+  const [drawerOpen, setDrawerOpen] = useState(false)
   // 每个任务各自的「已揭示」图片索引集合：{ [taskId]: { [imgIndex]: true } }
   const [revealed, setRevealed] = useState({})
 
@@ -255,28 +259,25 @@ export default function App() {
   async function downloadImage(task, item, index) {
     const fmt = task.outputFormat || 'png'
     const filename = `${task.name}-${index + 1}.${fmt}`
-    const src = imageSrc(task, item)
-    try {
-      let blobUrl
-      if (item.type === 'b64_json') {
-        blobUrl = src
-      } else {
-        const res = await fetch(src)
-        const blob = await res.blob()
-        blobUrl = URL.createObjectURL(blob)
-      }
-      const a = document.createElement('a')
-      a.href = blobUrl
+    const a = document.createElement('a')
+
+    if (item.type === 'b64_json') {
+      // base64：直接用 data URL 触发下载，不发生跳转。
+      a.href = imageSrc(task, item)
       a.download = filename
       document.body.appendChild(a)
       a.click()
       a.remove()
-      if (item.type !== 'b64_json') {
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 4000)
-      }
-    } catch {
-      window.open(src, '_blank', 'noopener,noreferrer')
+      return
     }
+
+    // 远程 URL：走后端下载代理（带 attachment 头），绕过跨域，浏览器直接保存。
+    const proxied = `/api/images/download?url=${encodeURIComponent(item.value)}&filename=${encodeURIComponent(filename)}`
+    a.href = proxied
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
   }
 
   function markRevealed(taskId, imgIndex) {
@@ -336,6 +337,124 @@ export default function App() {
     </div>
   )
 
+  // 配置面板（桌面端 Sider 与手机端 Drawer 共用同一份）
+  const configPanels = (
+    <>
+      <Card size="small" className="panel" title="任务">
+        <div className="field">
+          <label>任务名称</label>
+          <Input
+            value={active.name}
+            onChange={(e) => patchActive({ name: e.target.value })}
+            placeholder="任务名称"
+          />
+        </div>
+      </Card>
+
+      <Card size="small" className="panel" title="连接配置">
+        <div className="field">
+          <label>请求地址 (Base URL)</label>
+          <Input
+            placeholder="https://api.openai.com"
+            value={active.baseUrl}
+            onChange={(e) => patchActive({ baseUrl: e.target.value })}
+          />
+        </div>
+        <div className="field">
+          <label>API Key</label>
+          <Input.Password
+            placeholder="sk-..."
+            value={active.apiKey}
+            onChange={(e) => patchActive({ apiKey: e.target.value })}
+            iconRender={(v) => (v ? <EyeOutlined /> : <EyeInvisibleOutlined />)}
+          />
+        </div>
+        <div className="field">
+          <label>模型 (Model)</label>
+          <AutoComplete
+            value={active.model}
+            onChange={(v) => patchActive({ model: v })}
+            options={MODEL_PRESETS.map((m) => ({ value: m }))}
+            placeholder="gpt-image-2"
+            filterOption={(input, opt) =>
+              opt.value.toLowerCase().includes(input.toLowerCase())
+            }
+          >
+            <Input />
+          </AutoComplete>
+        </div>
+        {isGpt && (
+          <Alert
+            type="info"
+            showIcon
+            banner
+            message={
+              <span>检测到 GPT 系列模型，将自动在请求地址后追加 <code>/v1</code></span>
+            }
+          />
+        )}
+      </Card>
+
+      <Card size="small" className="panel" title="参数配置">
+        <div className="field-grid">
+          <div className="field">
+            <label>分辨率</label>
+            <Select
+              value={active.resolution}
+              onChange={(v) => patchActive({ resolution: Number(v) })}
+              options={RESOLUTION_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            />
+          </div>
+          <div className="field">
+            <label>宽高比</label>
+            <Select
+              value={active.aspect}
+              onChange={(v) => patchActive({ aspect: v })}
+              options={ASPECT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            />
+          </div>
+          <div className="field">
+            <label>清晰度</label>
+            <Select
+              value={active.quality}
+              onChange={(v) => patchActive({ quality: v })}
+              options={QUALITY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            />
+          </div>
+          <div className="field">
+            <label>数量 (n)</label>
+            <InputNumber
+              min={1}
+              max={10}
+              value={active.n}
+              onChange={(v) => patchActive({ n: v })}
+              style={{ width: '100%' }}
+            />
+          </div>
+          <div className="field">
+            <label>背景</label>
+            <Select
+              value={active.background}
+              onChange={(v) => patchActive({ background: v })}
+              options={BACKGROUND_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            />
+          </div>
+          <div className="field">
+            <label>输出格式</label>
+            <Select
+              value={active.outputFormat}
+              onChange={(v) => patchActive({ outputFormat: v })}
+              options={FORMAT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            />
+          </div>
+        </div>
+        <div className="size-tag">
+          实际尺寸 <Tag color="blue">{activeSize}</Tag>
+        </div>
+      </Card>
+    </>
+  )
+
   return (
     <Layout className="app">
       <Header className="taskbar">
@@ -355,6 +474,12 @@ export default function App() {
           <span className="logo-name">大模型生图平台</span>
         </div>
 
+        <Button
+          className="menu-toggle"
+          icon={<SettingOutlined />}
+          onClick={() => setDrawerOpen(true)}
+        />
+
         <div className="tabs-wrap">
           <Tabs
             type="editable-card"
@@ -371,6 +496,7 @@ export default function App() {
           <Button
             type="primary"
             ghost
+            className="recharge-btn"
             icon={<WalletOutlined />}
             href="http://47.253.7.24:3000"
             target="_blank"
@@ -385,126 +511,26 @@ export default function App() {
             open={showContact}
             onOpenChange={setShowContact}
           >
-            <Button icon={<CustomerServiceOutlined />}>联系客服</Button>
+            <Button className="contact-btn" icon={<CustomerServiceOutlined />}>联系客服</Button>
           </Popover>
         </Space>
       </Header>
 
       <Layout className="layout">
         <Sider className="sidebar" width={340} theme="light">
-          <Card size="small" className="panel" title="任务">
-            <div className="field">
-              <label>任务名称</label>
-              <Input
-                value={active.name}
-                onChange={(e) => patchActive({ name: e.target.value })}
-                placeholder="任务名称"
-              />
-            </div>
-          </Card>
-
-          <Card size="small" className="panel" title="连接配置">
-            <div className="field">
-              <label>请求地址 (Base URL)</label>
-              <Input
-                placeholder="https://api.openai.com"
-                value={active.baseUrl}
-                onChange={(e) => patchActive({ baseUrl: e.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label>API Key</label>
-              <Input.Password
-                placeholder="sk-..."
-                value={active.apiKey}
-                onChange={(e) => patchActive({ apiKey: e.target.value })}
-                iconRender={(v) => (v ? <EyeOutlined /> : <EyeInvisibleOutlined />)}
-              />
-            </div>
-            <div className="field">
-              <label>模型 (Model)</label>
-              <AutoComplete
-                value={active.model}
-                onChange={(v) => patchActive({ model: v })}
-                options={MODEL_PRESETS.map((m) => ({ value: m }))}
-                placeholder="gpt-image-2"
-                filterOption={(input, opt) =>
-                  opt.value.toLowerCase().includes(input.toLowerCase())
-                }
-              >
-                <Input />
-              </AutoComplete>
-            </div>
-            {isGpt && (
-              <Alert
-                type="info"
-                showIcon
-                banner
-                message={
-                  <span>检测到 GPT 系列模型，将自动在请求地址后追加 <code>/v1</code></span>
-                }
-              />
-            )}
-          </Card>
-
-          <Card size="small" className="panel" title="参数配置">
-            <div className="field-grid">
-              <div className="field">
-                <label>分辨率</label>
-                <Select
-                  value={active.resolution}
-                  onChange={(v) => patchActive({ resolution: Number(v) })}
-                  options={RESOLUTION_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                />
-              </div>
-              <div className="field">
-                <label>宽高比</label>
-                <Select
-                  value={active.aspect}
-                  onChange={(v) => patchActive({ aspect: v })}
-                  options={ASPECT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                />
-              </div>
-              <div className="field">
-                <label>清晰度</label>
-                <Select
-                  value={active.quality}
-                  onChange={(v) => patchActive({ quality: v })}
-                  options={QUALITY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                />
-              </div>
-              <div className="field">
-                <label>数量 (n)</label>
-                <InputNumber
-                  min={1}
-                  max={10}
-                  value={active.n}
-                  onChange={(v) => patchActive({ n: v })}
-                  style={{ width: '100%' }}
-                />
-              </div>
-              <div className="field">
-                <label>背景</label>
-                <Select
-                  value={active.background}
-                  onChange={(v) => patchActive({ background: v })}
-                  options={BACKGROUND_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                />
-              </div>
-              <div className="field">
-                <label>输出格式</label>
-                <Select
-                  value={active.outputFormat}
-                  onChange={(v) => patchActive({ outputFormat: v })}
-                  options={FORMAT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-                />
-              </div>
-            </div>
-            <div className="size-tag">
-              实际尺寸 <Tag color="blue">{activeSize}</Tag>
-            </div>
-          </Card>
+          {configPanels}
         </Sider>
+
+        <Drawer
+          className="config-drawer"
+          title="配置"
+          placement="left"
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          width={320}
+        >
+          {configPanels}
+        </Drawer>
 
         <Content className="content">
           <Card className="prompt-card" size="small">
