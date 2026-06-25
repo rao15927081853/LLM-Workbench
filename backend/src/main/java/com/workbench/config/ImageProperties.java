@@ -1,5 +1,6 @@
 package com.workbench.config;
 
+import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -9,24 +10,9 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConfigurationProperties(prefix = "workbench.image")
+@Data
 public class ImageProperties {
 
     private String defaultBaseUrl = "";
     private String defaultApiKey = "";
-
-    public String getDefaultBaseUrl() {
-        return defaultBaseUrl;
-    }
-
-    public void setDefaultBaseUrl(String defaultBaseUrl) {
-        this.defaultBaseUrl = defaultBaseUrl;
-    }
-
-    public String getDefaultApiKey() {
-        return defaultApiKey;
-    }
-
-    public void setDefaultApiKey(String defaultApiKey) {
-        this.defaultApiKey = defaultApiKey;
-    }
 }

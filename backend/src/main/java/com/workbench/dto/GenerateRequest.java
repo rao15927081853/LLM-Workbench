@@ -1,11 +1,13 @@
 package com.workbench.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
 
 /**
  * Request sent from the workbench frontend. baseUrl and apiKey are optional;
  * if omitted, server-side defaults (workbench.image.*) are used.
  */
+@Data
 public class GenerateRequest {
 
     /** Configurable endpoint base, e.g. "https://api.openai.com" or a proxy host. */
@@ -36,76 +38,4 @@ public class GenerateRequest {
 
     /** Optional output format: "png", "jpeg", "webp" (gpt-image). */
     private String outputFormat;
-
-    public String getBaseUrl() {
-        return baseUrl;
-    }
-
-    public void setBaseUrl(String baseUrl) {
-        this.baseUrl = baseUrl;
-    }
-
-    public String getApiKey() {
-        return apiKey;
-    }
-
-    public void setApiKey(String apiKey) {
-        this.apiKey = apiKey;
-    }
-
-    public String getModel() {
-        return model;
-    }
-
-    public void setModel(String model) {
-        this.model = model;
-    }
-
-    public String getPrompt() {
-        return prompt;
-    }
-
-    public void setPrompt(String prompt) {
-        this.prompt = prompt;
-    }
-
-    public String getSize() {
-        return size;
-    }
-
-    public void setSize(String size) {
-        this.size = size;
-    }
-
-    public String getQuality() {
-        return quality;
-    }
-
-    public void setQuality(String quality) {
-        this.quality = quality;
-    }
-
-    public Integer getN() {
-        return n;
-    }
-
-    public void setN(Integer n) {
-        this.n = n;
-    }
-
-    public String getBackground() {
-        return background;
-    }
-
-    public void setBackground(String background) {
-        this.background = background;
-    }
-
-    public String getOutputFormat() {
-        return outputFormat;
-    }
-
-    public void setOutputFormat(String outputFormat) {
-        this.outputFormat = outputFormat;
-    }
 }

@@ -8,8 +8,9 @@ services:
       # 留空则要求前端在网页里填写。
       IMAGE_BASE_URL: ${IMAGE_BASE_URL:-}
       IMAGE_API_KEY: ${IMAGE_API_KEY:-}
+      SERVER_PORT: 8081
     expose:
-      - "8080"
+      - "8081"
     # 如需直接调试后端，取消下面注释即可对外暴露 8080。
     # ports:
     #   - "8080:8080"

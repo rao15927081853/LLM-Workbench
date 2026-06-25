@@ -27,10 +27,10 @@ import java.util.Map;
 @Service
 public class ImageGenerationService {
 
-    private static final Logger log = LoggerFactory.getLogger(ImageGenerationService.class);
+    private static final Logger log = LoggerFactory.getLogger(ImageGenerationService.class); // 创建日志记录器
 
-    private final RestClient.Builder restClientBuilder;
-    private final ImageProperties properties;
+    private final RestClient.Builder restClientBuilder; // RestClient 构建器
+    private final ImageProperties properties; // 图片属性
 
     public ImageGenerationService(RestClient.Builder restClientBuilder, ImageProperties properties) {
         this.restClientBuilder = restClientBuilder;
@@ -38,8 +38,8 @@ public class ImageGenerationService {
     }
 
     public GenerateResponse generate(GenerateRequest request) {
-        String baseUrl = firstNonBlank(request.getBaseUrl(), properties.getDefaultBaseUrl());
-        String apiKey = firstNonBlank(request.getApiKey(), properties.getDefaultApiKey());
+        String baseUrl = firstNonBlank(request.getBaseUrl(), properties.getDefaultBaseUrl()); // 请求地址
+        String apiKey = firstNonBlank(request.getApiKey(), properties.getDefaultApiKey()); // API Key
 
         if (!StringUtils.hasText(baseUrl)) {
             throw new IllegalArgumentException("请求地址 (baseUrl) 未配置");
@@ -48,8 +48,8 @@ public class ImageGenerationService {
             throw new IllegalArgumentException("API Key 未配置");
         }
 
-        String endpoint = resolveEndpoint(baseUrl, request.getModel(), "/images/generations");
-        Map<String, Object> body = buildBody(request);
+        String endpoint = resolveEndpoint(baseUrl, request.getModel(), "/images/generations"); // 端点
+        Map<String, Object> body = buildBody(request); // 请求体
 
         log.info("Calling image endpoint {} with model {}", endpoint, request.getModel());
 
@@ -125,7 +125,9 @@ public class ImageGenerationService {
         return new GenerateResponse(parseImages(raw), endpoint);
     }
 
-    /** Wraps an uploaded file as a named Resource so RestClient sends a proper file part. */
+    /**
+     * Wraps an uploaded file as a named Resource so RestClient sends a proper file part.
+     */
     private Resource toResource(MultipartFile file) {
         String filename = StringUtils.hasText(file.getOriginalFilename())
                 ? file.getOriginalFilename()
@@ -142,7 +144,9 @@ public class ImageGenerationService {
         }
     }
 
-    /** Fetched remote image bytes plus its content type, for the download proxy. */
+    /**
+     * Fetched remote image bytes plus its content type, for the download proxy.
+     */
     public record RemoteImage(Resource resource, String contentType) {
     }
 
@@ -215,22 +219,22 @@ public class ImageGenerationService {
     }
 
     @SuppressWarnings("unchecked")
-    private List<GenerateResponse.ImageItem> parseImages(Map<String, Object> raw) {
+    private List<GenerateResponse.ImageItem> parseImages(Map<String, Object> raw) { // 响应解析
         List<GenerateResponse.ImageItem> items = new ArrayList<>();
-        if (raw == null) {
+        if (raw == null) { // 响应数据为空
             return items;
         }
         Object dataObj = raw.get("data");
-        if (!(dataObj instanceof List<?> data)) {
+        if (!(dataObj instanceof List<?> data)) { // 响应数据不是列表
             return items;
         }
-        for (Object entry : data) {
-            if (!(entry instanceof Map<?, ?> map)) {
+        for (Object entry : data) { // 响应数据项
+            if (!(entry instanceof Map<?, ?> map)) { // 响应数据项不是字典
                 continue;
             }
-            String revised = asString(map.get("revised_prompt"));
-            Object b64 = map.get("b64_json");
-            Object url = map.get("url");
+            String revised = asString(map.get("revised_prompt")); // 响应数据项的修改提示
+            Object b64 = map.get("b64_json"); // 响应数据项的图片数据
+            Object url = map.get("url");// 响应数据项的图片URL
             if (b64 != null) {
                 items.add(new GenerateResponse.ImageItem("b64_json", asString(b64), revised));
             } else if (url != null) {
@@ -239,7 +243,7 @@ public class ImageGenerationService {
         }
         return items;
     }
-
+    // 响应数据项的图片数据转换成字符串
     private String asString(Object o) {
         return o == null ? null : String.valueOf(o);
     }
