@@ -22,4 +22,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "8088:80"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/ssl/cloudflare:/etc/ssl/cloudflare:ro
