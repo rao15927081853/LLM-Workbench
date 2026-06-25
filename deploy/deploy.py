@@ -21,8 +21,34 @@ if hasattr(sys.stdout, "reconfigure"):
 HOST = os.environ.get("DEPLOY_HOST", "47.253.7.24")
 USER = os.environ.get("DEPLOY_USER", "root")
 PASS = os.environ.get("DEPLOY_PASS")
+KEY = os.environ.get("DEPLOY_KEY")  # 私钥文件路径（密钥登录）
 REMOTE_DIR = os.environ.get("DEPLOY_DIR", "/opt/llm-workbench")
 PROJECT = "llm-workbench"
+
+
+def connect():
+    """支持两种登录方式：优先用私钥(DEPLOY_KEY)，否则用密码(DEPLOY_PASS)。"""
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    if KEY:
+        print(f"连接 {USER}@{HOST}（密钥 {KEY}）...")
+        pkey = None
+        for loader in (paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey):
+            try:
+                pkey = loader.from_private_key_file(KEY)
+                break
+            except Exception:
+                continue
+        if pkey is None:
+            raise RuntimeError(f"无法加载私钥：{KEY}")
+        client.connect(HOST, username=USER, pkey=pkey, timeout=20)
+    elif PASS:
+        print(f"连接 {USER}@{HOST}（密码）...")
+        client.connect(HOST, username=USER, password=PASS, timeout=20)
+    else:
+        raise RuntimeError("请设置 DEPLOY_KEY（私钥路径）或 DEPLOY_PASS（密码）")
+    print("连接成功。")
+    return client
 
 # 仅打包部署所需文件，排除构建产物与依赖目录。
 INCLUDE = ["backend", "frontend", "docker-compose.yml"]

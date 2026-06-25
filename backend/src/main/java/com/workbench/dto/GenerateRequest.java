@@ -1,5 +1,7 @@
 package com.workbench.dto;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
@@ -30,7 +32,9 @@ public class GenerateRequest {
     /** Quality, e.g. "low", "medium", "high", "auto" (gpt-image) or "standard"/"hd" (dall-e). */
     private String quality;
 
-    /** Number of images to generate (1-10). */
+    /** Number of images to generate (1-5). Implemented via concurrent fan-out. */
+    @Min(value = 1, message = "生成数量最少 1 张")
+    @Max(value = 5, message = "生成数量最多 5 张")
     private Integer n;
 
     /** Optional background: "transparent", "opaque", "auto" (gpt-image). */

@@ -1,15 +1,19 @@
 package com.workbench.service;
 
 import com.workbench.config.ImageProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
+
+import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ImageGenerationServiceTest {
 
     private final ImageGenerationService service =
-            new ImageGenerationService(RestClient.builder(), new ImageProperties());
+            new ImageGenerationService(RestClient.builder(), new ImageProperties(),
+                    Executors.newSingleThreadExecutor(), new ObjectMapper());
 
     @Test
     void gptModelAppendsV1() {

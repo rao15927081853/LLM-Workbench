@@ -66,7 +66,7 @@ function defaultTask(seed = {}, index = 1) {
     resolution: seed.resolution || 1024,
     aspect: seed.aspect || '1:1',
     quality: seed.quality || 'auto',
-    n: seed.n || 1,
+    n: Math.min(Math.max(Number(seed.n) || 1, 1), 5),
     background: seed.background || '',
     outputFormat: seed.outputFormat || '',
     prompt: seed.prompt || '',
@@ -422,10 +422,10 @@ export default function App() {
             />
           </div>
           <div className="field">
-            <label>数量 (n)</label>
+            <label>数量 (n)　<span style={{ color: '#999', fontWeight: 400 }}>最多 5 张</span></label>
             <InputNumber
               min={1}
-              max={10}
+              max={5}
               value={active.n}
               onChange={(v) => patchActive({ n: v })}
               style={{ width: '100%' }}
@@ -539,19 +539,20 @@ export default function App() {
                 listType="picture-card"
                 fileList={active.fileList}
                 multiple
+                maxCount={5}
                 accept="image/*"
                 beforeUpload={() => false}
-                onChange={({ fileList }) => patchActive({ fileList })}
+                onChange={({ fileList }) => patchActive({ fileList: fileList.slice(0, 5) })}
               >
-                {active.fileList.length >= 10 ? null : (
+                {active.fileList.length >= 5 ? null : (
                   <div className="upload-trigger">
                     <PictureOutlined />
-                    <div>参考图</div>
+                    <div>参考图 {active.fileList.length}/5</div>
                   </div>
                 )}
               </Upload>
               <Text type="secondary" className="upload-hint">
-                可上传 0 / 1 / 多张参考图。上传后走「图生图」，留空则「文生图」。
+                可上传 0 / 1 / 多张参考图（最多 5 张）。上传后走「图生图」，留空则「文生图」。
               </Text>
             </div>
             <div className="prompt-row">

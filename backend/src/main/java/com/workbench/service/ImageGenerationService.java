@@ -3,6 +3,8 @@ package com.workbench.service;
 import com.workbench.config.ImageProperties;
 import com.workbench.dto.GenerateRequest;
 import com.workbench.dto.GenerateResponse;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
@@ -23,18 +25,33 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 
 @Service
 public class ImageGenerationService {
 
     private static final Logger log = LoggerFactory.getLogger(ImageGenerationService.class); // 创建日志记录器
 
+    /** 单次请求允许的最大生成数量 / 参考图数量 / 并发任务数（产品约定，统一为 5）。 */
+    public static final int MAX_N = 5;
+    public static final int MAX_IMAGES = 5;
+
     private final RestClient.Builder restClientBuilder; // RestClient 构建器
     private final ImageProperties properties; // 图片属性
+    private final ExecutorService fanoutExecutor; // 多图并发线程池（固定 5）
+    private final ObjectMapper objectMapper; // 手动解析上游响应（无视 content-type）
 
-    public ImageGenerationService(RestClient.Builder restClientBuilder, ImageProperties properties) {
+    public ImageGenerationService(RestClient.Builder restClientBuilder,
+                                  ImageProperties properties,
+                                  ExecutorService imageFanoutExecutor,
+                                  ObjectMapper objectMapper) {
         this.restClientBuilder = restClientBuilder;
         this.properties = properties;
+        this.fanoutExecutor = imageFanoutExecutor;
+        this.objectMapper = objectMapper;
     }
 
     public GenerateResponse generate(GenerateRequest request) {
@@ -49,27 +66,33 @@ public class ImageGenerationService {
         }
 
         String endpoint = resolveEndpoint(baseUrl, request.getModel(), "/images/generations"); // 端点
-        Map<String, Object> body = buildBody(request); // 请求体
+        int count = clampCount(request.getN()); // 并发份数（1-5）
+        Map<String, Object> body = buildBody(request); // 单次请求体（固定 n=1）
 
-        log.info("Calling image endpoint {} with model {}", endpoint, request.getModel());
+        log.info("Calling image endpoint {} with model {} ({} concurrent task(s))",
+                endpoint, request.getModel(), count);
 
         RestClient client = restClientBuilder.build();
-        @SuppressWarnings("unchecked")
-        Map<String, Object> raw = client.post()
-                .uri(endpoint)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(body)
-                .retrieve()
-                .body(Map.class);
+        // 上游对图像接口的 n>1 不透传，这里改为并发发起 count 个 n=1 请求再合并。
+        List<GenerateResponse.ImageItem> images = fanOut(count, () -> {
+            String raw = client.post()
+                    .uri(endpoint)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(String.class);
+            return parseImages(raw);
+        });
 
-        return new GenerateResponse(parseImages(raw), endpoint);
+        return new GenerateResponse(images, endpoint);
     }
 
     /**
      * Image-to-image: forwards uploaded reference images plus prompt/params to the
-     * upstream "/images/edits" endpoint as multipart/form-data. Supports 1 or more images
-     * (the {@code image[]} repeated field, per the gpt-image-1 multi-image contract).
+     * upstream "/images/edits" endpoint as multipart/form-data. Supports 1-5 reference
+     * images (the {@code image[]} repeated field). When {@code n>1}, fans out N concurrent
+     * {@code n=1} calls and merges results (upstream ignores n for image endpoints).
      */
     public GenerateResponse edit(GenerateRequest request, List<MultipartFile> images) {
         String baseUrl = firstNonBlank(request.getBaseUrl(), properties.getDefaultBaseUrl());
@@ -84,61 +107,139 @@ public class ImageGenerationService {
         if (images == null || images.isEmpty()) {
             throw new IllegalArgumentException("图生图需要至少上传一张参考图");
         }
+        if (images.size() > MAX_IMAGES) {
+            throw new IllegalArgumentException("参考图最多上传 " + MAX_IMAGES + " 张，当前 " + images.size() + " 张");
+        }
 
         String endpoint = resolveEndpoint(baseUrl, request.getModel(), "/images/edits");
+        int count = clampCount(request.getN());
 
-        MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
-        form.add("model", request.getModel());
-        form.add("prompt", request.getPrompt());
-        if (StringUtils.hasText(request.getSize())) {
-            form.add("size", request.getSize());
-        }
-        if (StringUtils.hasText(request.getQuality())) {
-            form.add("quality", request.getQuality());
-        }
-        if (request.getN() != null && request.getN() > 0) {
-            form.add("n", String.valueOf(request.getN()));
-        }
-        if (StringUtils.hasText(request.getBackground())) {
-            form.add("background", request.getBackground());
-        }
-        if (StringUtils.hasText(request.getOutputFormat())) {
-            form.add("output_format", request.getOutputFormat());
-        }
+        // 预先读出每张参考图的字节，便于在多个并发请求间安全复用（MultipartFile 的流只能读一次）。
+        List<CachedFile> cached = new ArrayList<>(images.size());
         for (MultipartFile file : images) {
-            form.add("image[]", toResource(file));
+            cached.add(toCachedFile(file));
         }
 
-        log.info("Calling image edits endpoint {} with model {} and {} image(s)",
-                endpoint, request.getModel(), images.size());
+        log.info("Calling image edits endpoint {} with model {}, {} image(s), {} concurrent task(s)",
+                endpoint, request.getModel(), cached.size(), count);
 
         RestClient client = restClientBuilder.build();
-        @SuppressWarnings("unchecked")
-        Map<String, Object> raw = client.post()
-                .uri(endpoint)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                .contentType(MediaType.MULTIPART_FORM_DATA)
-                .body(form)
-                .retrieve()
-                .body(Map.class);
+        List<GenerateResponse.ImageItem> result = fanOut(count, () -> {
+            // 每个并发任务都要新建自己的 form（MultiValueMap 非线程安全，且 part 不应共享）。
+            MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
+            form.add("model", request.getModel());
+            form.add("prompt", request.getPrompt());
+            if (StringUtils.hasText(request.getSize())) {
+                form.add("size", request.getSize());
+            }
+            if (StringUtils.hasText(request.getQuality())) {
+                form.add("quality", request.getQuality());
+            }
+            if (StringUtils.hasText(request.getBackground())) {
+                form.add("background", request.getBackground());
+            }
+            if (StringUtils.hasText(request.getOutputFormat())) {
+                form.add("output_format", request.getOutputFormat());
+            }
+            for (CachedFile cf : cached) {
+                form.add("image[]", cf.toResource());
+            }
 
-        return new GenerateResponse(parseImages(raw), endpoint);
+            String raw = client.post()
+                    .uri(endpoint)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(form)
+                    .retrieve()
+                    .body(String.class);
+            return parseImages(raw);
+        });
+
+        return new GenerateResponse(result, endpoint);
     }
 
     /**
-     * Wraps an uploaded file as a named Resource so RestClient sends a proper file part.
+     * 并发执行 count 个相同的图像请求（每个返回若干 ImageItem），合并所有成功结果。
+     * 单个任务失败不影响其它任务（生图按张计费，尽量把已成功的返还给用户）；
+     * 仅当全部失败时才抛出异常，错误信息取第一个失败原因。
      */
-    private Resource toResource(MultipartFile file) {
-        String filename = StringUtils.hasText(file.getOriginalFilename())
-                ? file.getOriginalFilename()
-                : "image.png";
-        try {
-            return new ByteArrayResource(file.getBytes()) {
+    private List<GenerateResponse.ImageItem> fanOut(
+            int count, Callable<List<GenerateResponse.ImageItem>> task) {
+        if (count <= 1) {
+            // 单张直接同步执行，避免线程池开销，也保留原有的异常直抛语义。
+            try {
+                return task.call();
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        List<Future<List<GenerateResponse.ImageItem>>> futures = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            futures.add(fanoutExecutor.submit(task));
+        }
+
+        List<GenerateResponse.ImageItem> merged = new ArrayList<>();
+        RuntimeException firstError = null;
+        int failures = 0;
+        for (Future<List<GenerateResponse.ImageItem>> f : futures) {
+            try {
+                List<GenerateResponse.ImageItem> part = f.get();
+                if (part != null) {
+                    merged.addAll(part);
+                }
+            } catch (ExecutionException e) {
+                failures++;
+                Throwable cause = e.getCause() != null ? e.getCause() : e;
+                log.warn("并发生成中有一个任务失败：{}", cause.toString());
+                if (firstError == null) {
+                    firstError = (cause instanceof RuntimeException re)
+                            ? re : new RuntimeException(cause);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("生成被中断", e);
+            }
+        }
+
+        // 全部失败才抛错；否则返回成功的部分（前端能拿到几张是几张）。
+        if (merged.isEmpty() && firstError != null) {
+            throw firstError;
+        }
+        if (failures > 0) {
+            log.warn("并发生成完成：成功 {} 张，失败 {} 个任务", merged.size(), failures);
+        }
+        return merged;
+    }
+
+    /** 把请求里的 n 收敛到 [1, MAX_N]，null/<=0 视为 1。 */
+    private int clampCount(Integer n) {
+        if (n == null || n <= 0) {
+            return 1;
+        }
+        return Math.min(n, MAX_N);
+    }
+
+    /** 已读入内存的上传文件（字节 + 文件名），可在多个并发请求间复用。 */
+    private record CachedFile(byte[] bytes, String filename) {
+        Resource toResource() {
+            return new ByteArrayResource(bytes) {
                 @Override
                 public String getFilename() {
                     return filename;
                 }
             };
+        }
+    }
+
+    private CachedFile toCachedFile(MultipartFile file) {
+        String filename = StringUtils.hasText(file.getOriginalFilename())
+                ? file.getOriginalFilename()
+                : "image.png";
+        try {
+            return new CachedFile(file.getBytes(), filename);
         } catch (IOException e) {
             throw new UncheckedIOException("读取上传图片失败: " + filename, e);
         }
@@ -206,9 +307,8 @@ public class ImageGenerationService {
         if (StringUtils.hasText(request.getQuality())) {
             body.put("quality", request.getQuality());
         }
-        if (request.getN() != null && request.getN() > 0) {
-            body.put("n", request.getN());
-        }
+        // n 固定为 1：多张通过并发发起多个请求实现（上游不透传 n）。
+        body.put("n", 1);
         if (StringUtils.hasText(request.getBackground())) {
             body.put("background", request.getBackground());
         }
@@ -218,11 +318,22 @@ public class ImageGenerationService {
         return body;
     }
 
-    @SuppressWarnings("unchecked")
-    private List<GenerateResponse.ImageItem> parseImages(Map<String, Object> raw) { // 响应解析
+    /**
+     * 解析上游返回的原始 JSON 文本（手动用 ObjectMapper，避免上游把 JSON 标成
+     * application/octet-stream 时 RestClient 拒绝转换而报错）。
+     */
+    private List<GenerateResponse.ImageItem> parseImages(String rawJson) {
         List<GenerateResponse.ImageItem> items = new ArrayList<>();
-        if (raw == null) { // 响应数据为空
+        if (!StringUtils.hasText(rawJson)) {
             return items;
+        }
+        Map<String, Object> raw;
+        try {
+            raw = objectMapper.readValue(rawJson, new TypeReference<Map<String, Object>>() {});
+        } catch (IOException e) {
+            // 上游返回了非 JSON 内容（如 HTML 错误页），截断记录便于排查。
+            String snippet = rawJson.length() > 300 ? rawJson.substring(0, 300) : rawJson;
+            throw new RuntimeException("解析上游响应失败：" + snippet, e);
         }
         Object dataObj = raw.get("data");
         if (!(dataObj instanceof List<?> data)) { // 响应数据不是列表
