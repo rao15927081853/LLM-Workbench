@@ -247,12 +247,36 @@ export default function App() {
   function imageSrc(task, item) {
     if (item.type === 'b64_json') {
       const fmt = task.outputFormat || 'png'
+      // 兼容上游既可能返回裸 base64，也可能返回完整 data URI 的情况
+      if (item.value.startsWith('data:')) return item.value
       return `data:image/${fmt};base64,${item.value}`
     }
     return item.value
   }
 
+  // 把 base64 转成 Blob URL：data: URL 在大体积时无法被 window.open 顶层导航
+  // （浏览器安全拦截），且超长 href 易触发限制；blob: URL 两者都不受限。
+  function b64ToBlobUrl(task, item) {
+    const fmt = task.outputFormat || 'png'
+    // 去掉可能存在的 data:image/...;base64, 前缀，只保留纯 base64
+    const raw = item.value.startsWith('data:')
+      ? item.value.slice(item.value.indexOf(',') + 1)
+      : item.value
+    const binary = atob(raw)
+    const bytes = new Uint8Array(binary.length)
+    for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j)
+    const blob = new Blob([bytes], { type: `image/${fmt}` })
+    return URL.createObjectURL(blob)
+  }
+
   function viewImage(task, item) {
+    if (item.type === 'b64_json') {
+      const url = b64ToBlobUrl(task, item)
+      window.open(url, '_blank', 'noopener,noreferrer')
+      // 给新标签页留出加载时间后回收，避免泄漏
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      return
+    }
     window.open(imageSrc(task, item), '_blank', 'noopener,noreferrer')
   }
 
@@ -262,12 +286,14 @@ export default function App() {
     const a = document.createElement('a')
 
     if (item.type === 'b64_json') {
-      // base64：直接用 data URL 触发下载，不发生跳转。
-      a.href = imageSrc(task, item)
+      // base64：转 Blob URL 触发下载，规避大体积 data URL 的长度/内存限制。
+      const url = b64ToBlobUrl(task, item)
+      a.href = url
       a.download = filename
       document.body.appendChild(a)
       a.click()
       a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
       return
     }
 
