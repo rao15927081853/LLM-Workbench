@@ -156,10 +156,12 @@ echo "BUILD_STARTED"
 
     run(f"docker compose -p {PROJECT} ps --format 'table {{{{.Name}}}}\\t{{{{.Status}}}}'",
         "容器状态", check=False, timeout=60)
-    run("curl -s -o /dev/null -w 'frontend HTTP %{http_code}\\n' http://localhost:8088/",
+    # 前端容器映射 80/443，刚启动需要几秒就绪，先等一下再探活（-k 跳过自签名/Origin 证书校验）
+    time.sleep(5)
+    run("curl -sk -o /dev/null -w 'frontend HTTPS %{http_code}\\n' --max-time 10 https://localhost/",
         "前端连通性", check=False, timeout=60)
 
-    print(f"\n部署完成。访问 http://{HOST}:8088")
+    print(f"\n部署完成。访问 https://{HOST}")
     try:
         get_client().close()
     except Exception:
