@@ -501,7 +501,7 @@ export default function App() {
             href="http://47.253.7.24:3000"
             target="_blank"
           >
-            充值额度
+            获取 API Key
           </Button>
           <Popover
             content={contactContent}
