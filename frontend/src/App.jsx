@@ -69,6 +69,10 @@ function defaultTask(seed = {}, index = 1) {
     background: seed.background || '',
     outputFormat: seed.outputFormat || '',
     prompt: seed.prompt || '',
+    // 自定义尺寸模式
+    useCustomSize: seed.useCustomSize || false,
+    customWidth: seed.customWidth || 1024,
+    customHeight: seed.customHeight || 1024,
     // 运行时状态（不持久化）
     fileList: [],
     images: [],
@@ -94,6 +98,9 @@ function persist(tasks, activeId) {
       background: t.background,
       outputFormat: t.outputFormat,
       prompt: t.prompt,
+      useCustomSize: t.useCustomSize,
+      customWidth: t.customWidth,
+      customHeight: t.customHeight,
     }))
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ tasks: slim, activeId }))
   } catch {
@@ -233,7 +240,10 @@ export default function App() {
       return
     }
 
-    const size = computeSize(Number(task.resolution), task.aspect)
+    // 根据是否使用自定义尺寸来计算 size
+    const size = task.useCustomSize
+      ? `${task.customWidth}x${task.customHeight}`
+      : computeSize(Number(task.resolution), task.aspect)
     // 取出真正的 File 对象（antd Upload 在 beforeUpload 返回 false 时存于 originFileObj）
     const files = (task.fileList || []).map((f) => f.originFileObj || f).filter(Boolean)
     patchTask(task.id, { loading: true, error: '', images: [] })
@@ -375,7 +385,9 @@ export default function App() {
   }
 
   const isGpt = active.model.trim().toLowerCase().startsWith('gpt')
-  const activeSize = computeSize(Number(active.resolution), active.aspect)
+  const activeSize = active.useCustomSize
+    ? `${active.customWidth}x${active.customHeight}`
+    : computeSize(Number(active.resolution), active.aspect)
   const activeRevealed = revealed[active.id] || {}
   // 判断当前模型是否带分辨率后缀（带后缀则禁用分辨率选择）
   const modelHasResolution = extractResolutionFromModel(active.model) !== null
@@ -484,31 +496,77 @@ export default function App() {
       </Card>
 
       <Card size="small" className="panel" title="参数配置">
+        <div className="field">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <label style={{ margin: 0 }}>尺寸设置</label>
+            <Button
+              size="small"
+              type="link"
+              onClick={() => patchActive({ useCustomSize: !active.useCustomSize })}
+              style={{ padding: 0, height: 'auto' }}
+            >
+              {active.useCustomSize ? '切换到预设' : '自定义宽高'}
+            </Button>
+          </div>
+        </div>
+
+        {!active.useCustomSize ? (
+          // 预设模式：分辨率 + 宽高比
+          <div className="field-grid">
+            <div className="field">
+              <label>
+                分辨率
+                {modelHasResolution && (
+                  <span style={{ color: '#999', fontWeight: 400, marginLeft: 8 }}>
+                    (由模型决定)
+                  </span>
+                )}
+              </label>
+              <Select
+                value={active.resolution}
+                onChange={(v) => patchActive({ resolution: Number(v) })}
+                options={RESOLUTION_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                disabled={modelHasResolution}
+              />
+            </div>
+            <div className="field">
+              <label>宽高比</label>
+              <Select
+                value={active.aspect}
+                onChange={(v) => patchActive({ aspect: v })}
+                options={ASPECT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+              />
+            </div>
+          </div>
+        ) : (
+          // 自定义模式：直接输入宽高
+          <div className="field-grid">
+            <div className="field">
+              <label>宽度 (px)</label>
+              <InputNumber
+                min={8}
+                max={4096}
+                step={8}
+                value={active.customWidth}
+                onChange={(v) => patchActive({ customWidth: Math.min(4096, Math.max(8, v || 1024)) })}
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div className="field">
+              <label>高度 (px)</label>
+              <InputNumber
+                min={8}
+                max={4096}
+                step={8}
+                value={active.customHeight}
+                onChange={(v) => patchActive({ customHeight: Math.min(4096, Math.max(8, v || 1024)) })}
+                style={{ width: '100%' }}
+              />
+            </div>
+          </div>
+        )}
+
         <div className="field-grid">
-          <div className="field">
-            <label>
-              分辨率
-              {modelHasResolution && (
-                <span style={{ color: '#999', fontWeight: 400, marginLeft: 8 }}>
-                  (由模型决定)
-                </span>
-              )}
-            </label>
-            <Select
-              value={active.resolution}
-              onChange={(v) => patchActive({ resolution: Number(v) })}
-              options={RESOLUTION_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-              disabled={modelHasResolution}
-            />
-          </div>
-          <div className="field">
-            <label>宽高比</label>
-            <Select
-              value={active.aspect}
-              onChange={(v) => patchActive({ aspect: v })}
-              options={ASPECT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-            />
-          </div>
           <div className="field">
             <label>清晰度</label>
             <Select
