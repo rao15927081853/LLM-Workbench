@@ -6,7 +6,6 @@ import {
   Input,
   InputNumber,
   Select,
-  AutoComplete,
   Button,
   Tooltip,
   Popover,
@@ -162,6 +161,29 @@ export default function App() {
   // 更新当前活动任务的字段。
   function patchActive(patch) {
     patchTask(active.id, patch)
+  }
+
+  // 从模型名称中提取分辨率后缀（如 gpt-image-2-4k → 4096）
+  function extractResolutionFromModel(modelName) {
+    const match = modelName.match(/-(1k|2k|4k)$/i)
+    if (!match) return null
+    const suffix = match[1].toLowerCase()
+    if (suffix === '1k') return 1024
+    if (suffix === '2k') return 2048
+    if (suffix === '4k') return 4096
+    return null
+  }
+
+  // 处理模型变化，自动联动分辨率
+  function handleModelChange(newModel) {
+    const extractedRes = extractResolutionFromModel(newModel)
+    if (extractedRes) {
+      // 带分辨率后缀的模型，自动设置分辨率
+      patchActive({ model: newModel, resolution: extractedRes })
+    } else {
+      // 不带后缀的模型（如 gpt-image-2），默认 4k 分辨率
+      patchActive({ model: newModel, resolution: 4096 })
+    }
   }
 
   function addTask() {
@@ -355,6 +377,8 @@ export default function App() {
   const isGpt = active.model.trim().toLowerCase().startsWith('gpt')
   const activeSize = computeSize(Number(active.resolution), active.aspect)
   const activeRevealed = revealed[active.id] || {}
+  // 判断当前模型是否带分辨率后缀（带后缀则禁用分辨率选择）
+  const modelHasResolution = extractResolutionFromModel(active.model) !== null
 
   // Tabs（可编辑卡片式）：原生支持新增/关闭，标签内嵌状态指示。
   const tabItems = tasks.map((t) => ({
@@ -436,17 +460,16 @@ export default function App() {
         </div>
         <div className="field">
           <label>模型 (Model)</label>
-          <AutoComplete
+          <Select
             value={active.model}
-            onChange={(v) => patchActive({ model: v })}
-            options={MODEL_PRESETS.map((m) => ({ value: m }))}
-            placeholder="gpt-image-2"
-            filterOption={(input, opt) =>
-              opt.value.toLowerCase().includes(input.toLowerCase())
+            onChange={handleModelChange}
+            options={MODEL_PRESETS.map((m) => ({ value: m, label: m }))}
+            placeholder="选择模型"
+            showSearch
+            filterOption={(input, option) =>
+              option.value.toLowerCase().includes(input.toLowerCase())
             }
-          >
-            <Input />
-          </AutoComplete>
+          />
         </div>
         {isGpt && (
           <Alert
@@ -463,11 +486,19 @@ export default function App() {
       <Card size="small" className="panel" title="参数配置">
         <div className="field-grid">
           <div className="field">
-            <label>分辨率</label>
+            <label>
+              分辨率
+              {modelHasResolution && (
+                <span style={{ color: '#999', fontWeight: 400, marginLeft: 8 }}>
+                  (由模型决定)
+                </span>
+              )}
+            </label>
             <Select
               value={active.resolution}
               onChange={(v) => patchActive({ resolution: Number(v) })}
               options={RESOLUTION_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+              disabled={modelHasResolution}
             />
           </div>
           <div className="field">
