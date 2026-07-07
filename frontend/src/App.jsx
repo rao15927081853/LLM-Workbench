@@ -470,9 +470,10 @@ export default function App() {
             iconRender={(v) => (v ? <EyeOutlined /> : <EyeInvisibleOutlined />)}
           />
         </div>
-        <div className="field">
+        <div className="field" >
           <label>模型 (Model)</label>
           <Select
+          style={{width:"100%"}}
             value={active.model}
             onChange={handleModelChange}
             options={MODEL_PRESETS.map((m) => ({ value: m, label: m }))}
