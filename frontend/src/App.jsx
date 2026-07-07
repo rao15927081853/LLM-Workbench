@@ -313,6 +313,45 @@ export default function App() {
     }))
   }
 
+  // 处理粘贴图片事件
+  async function handlePaste(e) {
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    const imageFiles = []
+
+    // 遍历剪贴板内容，提取所有图片
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      // 检查是否为图片类型
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile()
+        if (file) {
+          // 构造符合 antd Upload 组件格式的对象
+          const uid = `paste-${Date.now()}-${i}`
+          const fileObj = {
+            uid,
+            name: `粘贴图片-${Date.now()}.${file.type.split('/')[1]}`,
+            status: 'done',
+            originFileObj: file,
+            thumbUrl: URL.createObjectURL(file),
+          }
+          imageFiles.push(fileObj)
+        }
+      }
+    }
+
+    // 如果粘贴了图片，添加到参考图列表
+    if (imageFiles.length > 0) {
+      const currentList = active.fileList || []
+      const newList = [...currentList, ...imageFiles].slice(0, 5) // 最多 5 张
+      patchActive({ fileList: newList })
+
+      // 阻止默认行为（避免在输入框中插入文件名等内容）
+      e.preventDefault()
+    }
+  }
+
   const isGpt = active.model.trim().toLowerCase().startsWith('gpt')
   const activeSize = computeSize(Number(active.resolution), active.aspect)
   const activeRevealed = revealed[active.id] || {}
@@ -583,9 +622,10 @@ export default function App() {
             </div>
             <div className="prompt-row">
               <TextArea
-                placeholder="描述你想生成的图像，例如：一只在霓虹灯城市街道上奔跑的柴犬，电影感光照"
+                placeholder="描述你想生成的图像，例如：一只在霓虹灯城市街道上奔跑的柴犬，电影感光照（支持 Ctrl+V 粘贴图片）"
                 value={active.prompt}
                 onChange={(e) => patchActive({ prompt: e.target.value })}
+                onPaste={handlePaste}
                 autoSize={{ minRows: 3, maxRows: 6 }}
               />
               <Button
