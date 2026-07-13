@@ -12,5 +12,6 @@ FROM eclipse-temurin:17-jre
 WORKDIR /app
 # 通配符避免硬编码版本号
 COPY --from=build /app/target/llm-workbench-backend-*.jar app.jar
-EXPOSE 8080
+# 与 docker-compose 的 SERVER_PORT / nginx 反代目标 8081 保持一致
+EXPOSE 8081
 ENTRYPOINT ["java", "-jar", "app.jar"]

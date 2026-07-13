@@ -21,8 +21,7 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /etc/ssl/cloudflare:/etc/ssl/cloudflare:ro
+    # 仅在容器网络内暴露 80，由外部 nginx-proxy 反代并终结 HTTPS。
+    # 不要绑定宿主机 80/443：会与 nginx-proxy 冲突（Bind failed: port already allocated）。
+    expose:
+      - "80"
