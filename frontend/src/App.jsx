@@ -712,7 +712,7 @@ export default function App({ mode = 'dark', onToggleTheme = () => {} }) {
             <circle cx="42" cy="22" r="5" fill="#ffd86b" />
             <path d="M14 48l12-16 9 11 7-8 8 13z" fill="#fff" />
           </svg>
-          <span className="logo-name">大模型生图平台</span>
+          <span className="logo-name">有梦智绘生图</span>
         </div>
 
         <Button
