@@ -1,8 +1,52 @@
+/* 明亮主题（默认）。品牌色与圆角在两套主题间保持一致。
+   --ctrl-bg：输入类控件底色；--overlay-btn-bg：图片悬浮操作按钮底色。 */
 :root {
-  --page-bg: #f5f6fa;
-  --text: #1f2330;
-  --muted: #6b7280;
+  --page-bg: #ffffff;
+  --text: #1c2030;
+  --muted: #5b6172;
   --accent: #5b6cff;
+  --accent-2: #8a6bff;
+
+  --glass-bg: #ffffff;
+  --glass-bg-strong: #ffffff;
+  --glass-border: #ebedf2;
+  --glass-blur: none;
+  --glass-shadow: 0 2px 8px rgba(20, 27, 50, 0.05);
+  --glass-shadow-lg: 0 8px 24px rgba(20, 27, 50, 0.1);
+  --radius: 14px;
+
+  --tab-bg: #f4f5f8;
+  --tab-bg-active: #ffffff;
+  --ctrl-bg: #f7f8fa;
+  --ctrl-border: #e6e8ef;
+  --upload-bg: #fafbff;
+  --overlay-btn-bg: #ffffff;
+  --empty-border: #dfe2ea;
+  --scrollbar-thumb: rgba(150, 156, 180, 0.5);
+  --scrollbar-thumb-hover: rgba(130, 136, 160, 0.7);
+}
+
+/* 深色主题：由 <html data-theme="dark"> 触发（main.jsx 中同步）。 */
+[data-theme='dark'] {
+  --page-bg: #141414;
+  --text: #e6e8ef;
+  --muted: #9096a6;
+
+  --glass-bg: #1e1e1e;
+  --glass-bg-strong: #232323;
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --glass-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.55);
+
+  --tab-bg: rgba(255, 255, 255, 0.05);
+  --tab-bg-active: rgba(255, 255, 255, 0.14);
+  --ctrl-bg: #262626;
+  --ctrl-border: rgba(255, 255, 255, 0.1);
+  --upload-bg: #262626;
+  --overlay-btn-bg: rgba(30, 30, 30, 0.85);
+  --empty-border: rgba(255, 255, 255, 0.14);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
 }
 
 * { box-sizing: border-box; }
@@ -15,12 +59,22 @@ html, body, #root {
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Microsoft YaHei', Roboto, Helvetica, Arial, sans-serif;
-  background: var(--page-bg);
   color: var(--text);
+  background: var(--page-bg);
 }
 
 .app {
   min-height: 100vh;
+  background: transparent;
+}
+
+/* 通用玻璃面：任何需要「毛玻璃」质感的容器都可复用此规则 */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
 }
 
 /* ===== 顶部任务栏 ===== */
@@ -28,12 +82,14 @@ body {
   display: flex;
   align-items: center;
   gap: 18px;
-  height: 60px;
+  height: 62px;
   line-height: normal;
-  padding: 0 20px;
-  background: #fff;
-  border-bottom: 1px solid #eceef3;
-  box-shadow: 0 1px 2px rgba(20, 27, 50, 0.03);
+  padding: 0 22px;
+  background: var(--glass-bg-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: 0 4px 24px rgba(31, 38, 90, 0.08);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -48,15 +104,15 @@ body {
 
 .logo-mark {
   display: block;
-  box-shadow: 0 4px 12px rgba(91, 108, 255, 0.3);
-  border-radius: 9px;
+  box-shadow: 0 6px 16px rgba(91, 108, 255, 0.4);
+  border-radius: 10px;
 }
 
 .logo-name {
   font-size: 17px;
   font-weight: 700;
   white-space: nowrap;
-  background: linear-gradient(90deg, #5b6cff, #8a6bff);
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -83,6 +139,19 @@ body {
   align-items: center;
 }
 
+/* 卡片式标签：主题变量控制底色，选中转更亮并带品牌色描边 */
+.tabs-wrap .ant-tabs-tab {
+  background: var(--tab-bg) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 10px !important;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.tabs-wrap .ant-tabs-tab-active {
+  background: var(--tab-bg-active) !important;
+  border-color: rgba(91, 108, 255, 0.5) !important;
+}
+
 .tab-label {
   display: inline-flex;
   align-items: center;
@@ -101,30 +170,163 @@ body {
   align-items: center;
   gap: 4px;
   font-size: 13px;
+  white-space: nowrap;
+}
+
+/* 标签溢出时：导航列表横向滚动，右侧「新建任务」按钮固定不被挤压 */
+.tabs-wrap .ant-tabs-nav-operations {
+  flex-shrink: 0;
+}
+
+.tabs-wrap .ant-tabs-nav-add {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* 标签列表区可横向滚动，让出空间给固定的新建按钮 */
+.tabs-wrap .ant-tabs-nav-wrap {
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox 隐藏滚动条 */
+}
+
+.tabs-wrap .ant-tabs-nav-wrap::-webkit-scrollbar {
+  display: none; /* Chrome/Safari 隐藏滚动条 */
+}
+
+/* 标签放不下时的收起态：任务列表按钮 + 当前任务名 + 新建 */
+.tabs-collapsed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.tabs-collapsed-active {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 任务列表抽屉：竖排任务项 */
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: var(--tab-bg);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.task-item:hover {
+  border-color: rgba(91, 108, 255, 0.4);
+}
+
+.task-item.active {
+  background: var(--tab-bg-active);
+  border-color: rgba(91, 108, 255, 0.5);
+}
+
+.task-item-status {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.task-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-item-close {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.task-item-close:hover {
+  opacity: 1;
 }
 
 .taskbar-actions {
   flex-shrink: 0;
 }
 
+.contact-btn {
+  background: var(--tab-bg) !important;
+  border: 1px solid var(--glass-border) !important;
+  color: var(--text) !important;
+}
+
+/* 明暗切换按钮：圆形图标钮，与顶栏其它按钮同底色 */
+.theme-toggle {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tab-bg) !important;
+  border: 1px solid var(--glass-border) !important;
+  color: var(--text) !important;
+}
+
+.theme-toggle .anticon {
+  font-size: 17px;
+}
+
+.theme-toggle:hover {
+  color: var(--accent) !important;
+  border-color: rgba(91, 108, 255, 0.5) !important;
+}
+
 /* ===== 主体布局 ===== */
 .layout {
   align-items: flex-start;
+  background: transparent;
 }
 
 .sidebar {
   background: transparent !important;
-  padding: 18px;
-  height: calc(100vh - 60px);
+  padding: 20px 18px;
+  height: calc(100vh - 62px);
   overflow-y: auto;
   position: sticky;
-  top: 60px;
+  top: 62px;
 }
 
+/* 配置卡片：毛玻璃面板 */
 .panel {
   margin-bottom: 16px;
-  border: 1px solid #eceef3 !important;
-  box-shadow: 0 6px 24px rgba(20, 27, 50, 0.04);
+  background: var(--glass-bg) !important;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--glass-shadow);
+}
+
+.panel .ant-card-head {
+  border-bottom: 1px solid var(--glass-border);
+  background: transparent;
 }
 
 .field {
@@ -140,14 +342,67 @@ body {
   margin-bottom: 6px;
 }
 
-/* 参数区两列网格 */
-.field-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px 14px;
+/* 字段行内标题：标签 + 右侧切换链接同行 */
+.field-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
+.field-header label { margin-bottom: 0; }
+
+/* 标签内的次要说明文字（如「最多 5 张」「由模型决定」） */
+.label-hint {
+  color: #9aa0b0;
+  font-weight: 400;
+  margin-left: 6px;
+  font-size: 12px;
+}
+
+/* 行内链接按钮：去掉多余内边距，纯文字点击感 */
+.inline-link.ant-btn {
+  padding: 0;
+  height: auto;
+}
+
+/* API Key 下方的操作按钮：获取 Key / 查看文档，统一为文字链接风格 */
+.apikey-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.apikey-link.ant-btn {
+  padding: 0;
+  height: auto;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.apikey-link.ant-btn:hover { color: var(--accent); }
+
+.apikey-link.primary.ant-btn {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* 参数区：每项占一行，控件占满宽度 */
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.field-grid:last-child { margin-bottom: 0; }
+
 .field-grid .field { margin-bottom: 0; }
+
+/* 网格内的数字输入与选择器统一占满宽度 */
+.field-grid .ant-input-number,
+.field-grid .ant-select { width: 100%; }
 
 .size-tag {
   margin-top: 14px;
@@ -155,22 +410,37 @@ body {
   color: var(--muted);
 }
 
+/* 输入类控件用主题变量控制底色，与卡片区分、保证文字对比度 */
+.panel .ant-input,
+.panel .ant-input-affix-wrapper,
+.panel .ant-input-number,
+.panel .ant-select .ant-select-selector,
+.prompt-card .ant-input {
+  background: var(--ctrl-bg) !important;
+  border-color: var(--ctrl-border);
+}
+
 /* ===== 内容区 ===== */
 .content {
-  padding: 18px 22px 40px;
-  min-height: calc(100vh - 60px);
+  padding: 20px 24px 44px;
+  min-height: calc(100vh - 62px);
+  background: transparent;
 }
 
 .prompt-card {
-  margin-bottom: 18px;
-  border: 1px solid #eceef3 !important;
-  box-shadow: 0 6px 24px rgba(20, 27, 50, 0.05);
+  margin-bottom: 20px;
+  background: var(--glass-bg-strong) !important;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--glass-shadow);
 }
 
 .prompt-card .ant-card-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .upload-row {
@@ -182,6 +452,13 @@ body {
 
 .upload-row .ant-upload-wrapper {
   width: auto;
+}
+
+/* 上传格子：深色底 + 品牌色虚线描边 */
+.upload-row .ant-upload.ant-upload-select {
+  background: rgba(91, 108, 255, 0.06) !important;
+  border: 1px dashed rgba(91, 108, 255, 0.5) !important;
+  border-radius: 12px !important;
 }
 
 .upload-trigger {
@@ -200,22 +477,33 @@ body {
 .prompt-row {
   display: flex;
   gap: 14px;
-  align-items: stretch;
+  align-items: flex-end;
 }
 
 .prompt-card textarea {
   flex: 1;
 }
 
+/* 生成按钮：固定舒适高度，贴底对齐，不再被文本框撑成竖条 */
 .generate-btn {
-  align-self: stretch;
-  height: auto;
+  align-self: flex-end;
+  height: 46px;
+  min-width: 140px;
   padding-left: 26px;
   padding-right: 26px;
+  border: none;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 8px 20px rgba(91, 108, 255, 0.35);
+}
+
+.generate-btn:hover {
+  background: linear-gradient(135deg, #4b5cff, #7a5bff) !important;
+  box-shadow: 0 10px 26px rgba(91, 108, 255, 0.45);
 }
 
 .result-alert {
   margin-bottom: 16px;
+  border-radius: 12px;
 }
 
 .endpoint {
@@ -234,23 +522,39 @@ body {
 .empty-wrap {
   grid-column: 1 / -1;
   padding: 80px 20px;
-  background: #fff;
-  border: 1px dashed #e2e5ee;
-  border-radius: 14px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px dashed var(--glass-border);
+  border-radius: var(--radius);
 }
 
+/* 结果卡片：玻璃质感 */
 .img-card {
   overflow: hidden;
+  background: var(--glass-bg) !important;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--glass-shadow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.img-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--glass-shadow-lg);
 }
 
 .img-card .ant-card-body {
   padding: 12px 14px;
+  background: transparent;
 }
 
 .img-cover {
   position: relative;
   overflow: hidden;
-  background: #f0f1f5;
+  background: #2a2a2a;
 }
 
 .img-cover img {
@@ -269,6 +573,12 @@ body {
   opacity: 0;
   transform: translateY(-4px);
   transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.img-overlay .ant-btn {
+  background: var(--overlay-btn-bg) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 .img-card:hover .img-overlay {
@@ -296,16 +606,18 @@ body {
   transform: scale(1);
 }
 
-/* 生成中占位卡：流动微光 */
+/* 生成中占位卡：流动微光（玻璃底） */
 .card.placeholder {
   position: relative;
-  background: #eef0f6;
-  border-radius: 14px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-radius: var(--radius);
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #e7e9f1;
+  border: 1px solid var(--glass-border);
 }
 
 .card.placeholder .shimmer {
@@ -314,7 +626,7 @@ body {
   background: linear-gradient(
     110deg,
     rgba(255, 255, 255, 0) 30%,
-    rgba(91, 108, 255, 0.16) 50%,
+    rgba(91, 108, 255, 0.18) 50%,
     rgba(255, 255, 255, 0) 70%
   );
   background-size: 220% 100%;
@@ -342,7 +654,7 @@ body {
 .sidebar,
 .content {
   scrollbar-width: thin;
-  scrollbar-color: #cfd3df transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 .sidebar::-webkit-scrollbar,
@@ -358,13 +670,13 @@ body {
 
 .sidebar::-webkit-scrollbar-thumb,
 .content::-webkit-scrollbar-thumb {
-  background: #cfd3df;
+  background: var(--scrollbar-thumb);
   border-radius: 8px;
 }
 
 .sidebar::-webkit-scrollbar-thumb:hover,
 .content::-webkit-scrollbar-thumb:hover {
-  background: #b3b8c8;
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* ===== 响应式：PC / 平板 / 手机三档适配 ===== */
@@ -396,15 +708,17 @@ body {
   .tabs-wrap { min-width: 0; }
 
   /* 提示词输入区始终可见、占满宽，按钮在下方 */
-  .prompt-row { flex-direction: column; }
-  .generate-btn { width: 100%; }
+  .prompt-row { flex-direction: column; align-items: stretch; }
+  .generate-btn { width: 100%; align-self: stretch; }
 
   .gallery { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
   .content { padding: 12px 12px 28px; min-height: auto; }
 
   /* 顶栏操作按钮：隐藏文字，做成清晰可见的实心图标按钮 */
   .taskbar-actions { gap: 8px; }
-  .taskbar-actions .ant-btn > span:not(.anticon) {
+  /* 只隐藏文字 span，保留图标容器（.ant-btn-icon）与图标本身（.anticon）。
+     注意 antd 6 把图标包在 .ant-btn-icon 里，漏掉它会把整个图标一起隐藏。 */
+  .taskbar-actions .ant-btn > span:not(.anticon):not(.ant-btn-icon) {
     display: none;
   }
   .taskbar-actions .ant-btn {
@@ -416,16 +730,10 @@ body {
     justify-content: center;
     flex-shrink: 0;
   }
-  /* 图标放大并保证有颜色，肉眼清晰 */
   .taskbar-actions .ant-btn .anticon {
     font-size: 18px;
   }
-  /* 充值：实心金色；客服：实心蓝色 —— 在白色顶栏上对比明显 */
-  .taskbar-actions .ant-btn-background-ghost {
-    background: #faad14 !important;
-    border-color: #faad14 !important;
-    color: #fff !important;
-  }
+  /* 客服：实心蓝色 —— 在浅色玻璃顶栏上对比明显 */
   .taskbar-actions .contact-btn {
     background: var(--accent) !important;
     border-color: var(--accent) !important;
@@ -437,6 +745,11 @@ body {
 /* 抽屉内的面板适配 */
 .config-drawer .panel { margin-bottom: 14px; }
 .config-drawer .ant-drawer-body { padding: 14px; }
+.config-drawer .ant-drawer-content {
+  background: var(--glass-bg-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
 
 /* 小屏手机（≤480px）：参数两列改单列，画廊单列，上传提示换行 */
 @media (max-width: 480px) {
@@ -446,5 +759,3 @@ body {
   .logo-mark { width: 26px; height: 26px; }
   .tab-text { max-width: 64px; }
 }
-
-

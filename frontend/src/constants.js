@@ -3,8 +3,7 @@
 export const MODEL_PRESETS = [
   'gpt-image-2-4k',
   'gpt-image-2-2k',
-  'gpt-image-2-1k',
-  'gpt-image-2'
+  'gpt-image-2-1k'
 ]
 
 export const SIZE_OPTIONS = [

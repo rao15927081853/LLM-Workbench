@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Layout,
   Tabs,
@@ -22,6 +22,7 @@ import {
 import {
   PlusOutlined,
   WalletOutlined,
+  QuestionCircleOutlined,
   CustomerServiceOutlined,
   ThunderboltOutlined,
   EyeInvisibleOutlined,
@@ -30,6 +31,10 @@ import {
   ExpandOutlined,
   PictureOutlined,
   SettingOutlined,
+  SunOutlined,
+  MoonOutlined,
+  UnorderedListOutlined,
+  CloseOutlined,
 } from '@ant-design/icons'
 import { generateImages, editImages } from './api'
 import {
@@ -59,9 +64,9 @@ function defaultTask(seed = {}, index = 1) {
   return {
     id: uid(),
     name: seed.name || `任务 ${index}`,
-    baseUrl: seed.baseUrl || '',
+    baseUrl: seed.baseUrl || 'http://47.253.7.24:3000',
     apiKey: seed.apiKey || '',
-    model: seed.model || 'gpt-image-2',
+    model: seed.model || 'gpt-image-2-1k',
     resolution: seed.resolution || 1024,
     aspect: seed.aspect || '1:1',
     quality: seed.quality || 'auto',
@@ -140,7 +145,7 @@ function loadInitial() {
   return { tasks: [t], activeId: t.id }
 }
 
-export default function App() {
+export default function App({ mode = 'dark', onToggleTheme = () => {} }) {
   const initial = useMemo(loadInitial, [])
   const [tasks, setTasks] = useState(initial.tasks)
   const [activeId, setActiveId] = useState(initial.activeId)
@@ -148,6 +153,12 @@ export default function App() {
   const [showContact, setShowContact] = useState(false)
   // 手机端配置抽屉的开关
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // 任务列表抽屉的开关（标签超出宽度时启用）
+  const [taskDrawerOpen, setTaskDrawerOpen] = useState(false)
+  // 标签是否放不下需要收成抽屉
+  const [tabsOverflow, setTabsOverflow] = useState(false)
+  // 标签区容器：测其可用宽度，与内部渲染无关，避免检测抖动
+  const tabsWrapRef = useRef(null)
   // 每个任务各自的「已揭示」图片索引集合：{ [taskId]: { [imgIndex]: true } }
   const [revealed, setRevealed] = useState({})
 
@@ -157,6 +168,25 @@ export default function App() {
   useEffect(() => {
     persist(tasks, activeId)
   }, [tasks, activeId])
+
+  // 检测标签是否放得下：测量标签区可用宽度，按任务数估算所需宽度。
+  // 测的是容器可用宽度（flex:1，与是否渲染标签无关），因此不会来回抖动。
+  useEffect(() => {
+    const el = tabsWrapRef.current
+    if (!el) return
+    // 单个标签约 150px（含徽标、文字、内边距），新建按钮约 110px，留些余量
+    const PER_TAB = 150
+    const ADD_BTN = 110
+    const measure = () => {
+      const avail = el.clientWidth
+      const needed = tasks.length * PER_TAB + ADD_BTN
+      setTabsOverflow(needed > avail)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [tasks.length])
 
   // 局部更新某个任务（按 id），不影响其它任务 —— 这是并发生成的基础。
   function patchTask(id, patch) {
@@ -384,7 +414,40 @@ export default function App() {
     }
   }
 
-  const isGpt = active.model.trim().toLowerCase().startsWith('gpt')
+  // 预览参考图：antd 默认会 window.open 一个 base64 data URL，浏览器会拦截顶层
+  // 导航或直接显示原始字符串（白屏）。这里统一转成 blob URL 再打开。
+  async function handlePreview(file) {
+    // 优先用真正的 File 对象（上传/粘贴都带 originFileObj），直接生成 blob URL。
+    const raw = file.originFileObj || file
+    if (raw instanceof Blob) {
+      const url = URL.createObjectURL(raw)
+      window.open(url, '_blank', 'noopener,noreferrer')
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      return
+    }
+    // 已经是 blob URL 或远程 URL，可直接打开。
+    if (file.url && !file.url.startsWith('data:')) {
+      window.open(file.url, '_blank', 'noopener,noreferrer')
+      return
+    }
+    if (file.thumbUrl && file.thumbUrl.startsWith('blob:')) {
+      window.open(file.thumbUrl, '_blank', 'noopener,noreferrer')
+      return
+    }
+    // 兜底：只剩 base64（data:）时，转成 blob URL 再打开。
+    const dataUrl = file.url || file.thumbUrl
+    if (dataUrl && dataUrl.startsWith('data:')) {
+      const mime = dataUrl.slice(5, dataUrl.indexOf(';'))
+      const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+      const binary = atob(b64)
+      const bytes = new Uint8Array(binary.length)
+      for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j)
+      const url = URL.createObjectURL(new Blob([bytes], { type: mime }))
+      window.open(url, '_blank', 'noopener,noreferrer')
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    }
+  }
+
   const activeSize = active.useCustomSize
     ? `${active.customWidth}x${active.customHeight}`
     : computeSize(Number(active.resolution), active.aspect)
@@ -456,7 +519,7 @@ export default function App() {
         <div className="field">
           <label>请求地址 (Base URL)</label>
           <Input
-            placeholder="https://api.openai.com"
+            placeholder="http://47.253.7.24:3000"
             value={active.baseUrl}
             onChange={(e) => patchActive({ baseUrl: e.target.value })}
           />
@@ -470,11 +533,11 @@ export default function App() {
             iconRender={(v) => (v ? <EyeOutlined /> : <EyeInvisibleOutlined />)}
           />
         </div>
-        <div className="field" >
+        <div className="field">
           <label>模型 (Model)</label>
           <Select
-          style={{width:"100%"}}
             value={active.model}
+            style={{width:"100%"}}
             onChange={handleModelChange}
             options={MODEL_PRESETS.map((m) => ({ value: m, label: m }))}
             placeholder="选择模型"
@@ -484,31 +547,41 @@ export default function App() {
             }
           />
         </div>
-        {isGpt && (
-          <Alert
-            type="info"
-            showIcon
-            banner
-            message={
-              <span>检测到 GPT 系列模型，将自动在请求地址后追加 <code>/v1</code></span>
-            }
-          />
-        )}
+        <div className="apikey-actions">
+          <Button
+            type="link"
+            size="small"
+            className="apikey-link primary"
+            icon={<WalletOutlined />}
+            href="http://47.253.7.24:3000"
+            target="_blank"
+          >
+            如何获取 API Key？
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            className="apikey-link"
+            icon={<QuestionCircleOutlined />}
+            href="https://my.feishu.cn/wiki/H7oxwHzjIigDKIkFwhYcXSVmn8g?from=from_copylink"
+            target="_blank"
+          >
+            如何使用？
+          </Button>
+        </div>
       </Card>
 
       <Card size="small" className="panel" title="参数配置">
-        <div className="field">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <label style={{ margin: 0 }}>尺寸设置</label>
-            <Button
-              size="small"
-              type="link"
-              onClick={() => patchActive({ useCustomSize: !active.useCustomSize })}
-              style={{ padding: 0, height: 'auto' }}
-            >
-              {active.useCustomSize ? '切换到预设' : '自定义宽高'}
-            </Button>
-          </div>
+        <div className="field field-header">
+          <label>尺寸设置</label>
+          <Button
+            size="small"
+            type="link"
+            className="inline-link"
+            onClick={() => patchActive({ useCustomSize: !active.useCustomSize })}
+          >
+            {active.useCustomSize ? '切换到预设' : '自定义宽高'}
+          </Button>
         </div>
 
         {!active.useCustomSize ? (
@@ -518,9 +591,7 @@ export default function App() {
               <label>
                 分辨率
                 {modelHasResolution && (
-                  <span style={{ color: '#999', fontWeight: 400, marginLeft: 8 }}>
-                    (由模型决定)
-                  </span>
+                  <span className="label-hint">(由模型决定)</span>
                 )}
               </label>
               <Select
@@ -550,7 +621,6 @@ export default function App() {
                 step={8}
                 value={active.customWidth}
                 onChange={(v) => patchActive({ customWidth: Math.min(4096, Math.max(8, v || 1024)) })}
-                style={{ width: '100%' }}
               />
             </div>
             <div className="field">
@@ -561,7 +631,6 @@ export default function App() {
                 step={8}
                 value={active.customHeight}
                 onChange={(v) => patchActive({ customHeight: Math.min(4096, Math.max(8, v || 1024)) })}
-                style={{ width: '100%' }}
               />
             </div>
           </div>
@@ -577,13 +646,12 @@ export default function App() {
             />
           </div>
           <div className="field">
-            <label>数量 (n)　<span style={{ color: '#999', fontWeight: 400 }}>最多 5 张</span></label>
+            <label>数量 (n) <span className="label-hint">最多 5 张</span></label>
             <InputNumber
               min={1}
               max={5}
               value={active.n}
               onChange={(v) => patchActive({ n: v })}
-              style={{ width: '100%' }}
             />
           </div>
           <div className="field">
@@ -635,29 +703,54 @@ export default function App() {
           onClick={() => setDrawerOpen(true)}
         />
 
-        <div className="tabs-wrap">
-          <Tabs
-            type="editable-card"
-            activeKey={activeId}
-            onChange={setActiveId}
-            onEdit={onTabEdit}
-            items={tabItems}
-            addIcon={<span className="add-tab"><PlusOutlined /> 新建任务</span>}
-            hideAdd={false}
-          />
+        <div className="tabs-wrap" ref={tabsWrapRef}>
+          {tabsOverflow ? (
+            // 标签放不下：收成「任务列表」按钮，点击打开抽屉。
+            <div className="tabs-collapsed">
+              <Button
+                icon={<UnorderedListOutlined />}
+                onClick={() => setTaskDrawerOpen(true)}
+              >
+                任务列表
+                <Badge
+                  count={tasks.length}
+                  color="#5b6cff"
+                  size="small"
+                  style={{ marginInlineStart: 8 }}
+                />
+              </Button>
+              <span className="tabs-collapsed-active" title={active.name}>
+                {active.loading ? <Spin size="small" /> : null}
+                {active.name}
+              </span>
+              <Button
+                type="text"
+                icon={<PlusOutlined />}
+                onClick={addTask}
+                title="新建任务"
+              />
+            </div>
+          ) : (
+            <Tabs
+              type="editable-card"
+              activeKey={activeId}
+              onChange={setActiveId}
+              onEdit={onTabEdit}
+              items={tabItems}
+              addIcon={<span className="add-tab"><PlusOutlined /> 新建任务</span>}
+              hideAdd={false}
+            />
+          )}
         </div>
 
         <Space className="taskbar-actions" size={10}>
-          <Button
-            type="primary"
-            ghost
-            className="recharge-btn"
-            icon={<WalletOutlined />}
-            href="http://47.253.7.24:3000"
-            target="_blank"
-          >
-            获取 API Key
-          </Button>
+          <Tooltip title={mode === 'dark' ? '切换到亮色' : '切换到暗色'}>
+            <Button
+              className="theme-toggle"
+              icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+              onClick={onToggleTheme}
+            />
+          </Tooltip>
           <Popover
             content={contactContent}
             title="微信扫码联系客服"
@@ -687,6 +780,67 @@ export default function App() {
           {configPanels}
         </Drawer>
 
+        <Drawer
+          className="task-drawer"
+          title="任务列表"
+          placement="right"
+          open={taskDrawerOpen}
+          onClose={() => setTaskDrawerOpen(false)}
+          width={300}
+        >
+          <div className="task-list">
+            {tasks.map((t) => (
+              <div
+                key={t.id}
+                className={`task-item${t.id === activeId ? ' active' : ''}`}
+                onClick={() => {
+                  setActiveId(t.id)
+                  setTaskDrawerOpen(false)
+                }}
+              >
+                <span className="task-item-status">
+                  {t.loading ? (
+                    <Spin size="small" />
+                  ) : (
+                    <Badge
+                      count={t.images.length}
+                      showZero
+                      color={t.images.length ? '#5b6cff' : '#c9ccd6'}
+                      size="small"
+                    />
+                  )}
+                </span>
+                <span className="task-item-name" title={t.prompt || t.name}>
+                  {t.name}
+                </span>
+                {tasks.length > 1 && (
+                  <Button
+                    type="text"
+                    size="small"
+                    className="task-item-close"
+                    icon={<CloseOutlined />}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      closeTask(t.id, e)
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          <Button
+            type="dashed"
+            block
+            icon={<PlusOutlined />}
+            onClick={() => {
+              addTask()
+            }}
+            className="task-list-add"
+          >
+            新建任务
+          </Button>
+        </Drawer>
+
         <Content className="content">
           <Card className="prompt-card" size="small">
             <div className="upload-row">
@@ -697,6 +851,7 @@ export default function App() {
                 maxCount={5}
                 accept="image/*"
                 beforeUpload={() => false}
+                onPreview={handlePreview}
                 onChange={({ fileList }) => patchActive({ fileList: fileList.slice(0, 5) })}
               >
                 {active.fileList.length >= 5 ? null : (
