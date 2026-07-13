@@ -270,10 +270,16 @@ body {
   flex-shrink: 0;
 }
 
-.contact-btn {
+.contact-btn,
+.pricing-btn {
   background: var(--tab-bg) !important;
   border: 1px solid var(--glass-border) !important;
   color: var(--text) !important;
+}
+
+.pricing-btn:hover {
+  color: var(--accent) !important;
+  border-color: rgba(91, 108, 255, 0.5) !important;
 }
 
 /* 明暗切换按钮：圆形图标钮，与顶栏其它按钮同底色 */
@@ -650,6 +656,32 @@ body {
   display: block;
 }
 
+/* 定价说明气泡：每档一行，标签左对齐、价格右对齐 */
+.pricing-pop {
+  min-width: 180px;
+}
+
+.pricing-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  padding: 6px 0;
+}
+
+.pricing-row + .pricing-row {
+  border-top: 1px solid var(--glass-border);
+}
+
+.pricing-label {
+  color: var(--muted);
+}
+
+.pricing-value {
+  font-weight: 600;
+  color: var(--accent);
+}
+
 /* ===== 美化滚动条 ===== */
 .sidebar,
 .content {
@@ -737,6 +769,12 @@ body {
   .taskbar-actions .contact-btn {
     background: var(--accent) !important;
     border-color: var(--accent) !important;
+    color: #fff !important;
+  }
+  /* 价格：实心金色 —— 与客服区分，移动端图标清晰可辨 */
+  .taskbar-actions .pricing-btn {
+    background: #f0a020 !important;
+    border-color: #f0a020 !important;
     color: #fff !important;
   }
   .menu-toggle .anticon { font-size: 18px; }

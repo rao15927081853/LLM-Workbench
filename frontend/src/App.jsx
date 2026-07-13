@@ -35,6 +35,7 @@ import {
   MoonOutlined,
   UnorderedListOutlined,
   CloseOutlined,
+  DollarOutlined,
 } from '@ant-design/icons'
 import { generateImages, editImages } from './api'
 import {
@@ -501,6 +502,23 @@ export default function App({ mode = 'dark', onToggleTheme = () => {} }) {
     </div>
   )
 
+  const pricingContent = (
+    <div className="pricing-pop">
+      <div className="pricing-row">
+        <span className="pricing-label">1K 图</span>
+        <span className="pricing-value">0.06 元 / 张</span>
+      </div>
+      <div className="pricing-row">
+        <span className="pricing-label">2K 图</span>
+        <span className="pricing-value">0.07 元 / 张</span>
+      </div>
+      <div className="pricing-row">
+        <span className="pricing-label">4K 图</span>
+        <span className="pricing-value">0.08 元 / 张</span>
+      </div>
+    </div>
+  )
+
   // 配置面板（桌面端 Sider 与手机端 Drawer 共用同一份）
   const configPanels = (
     <>
@@ -752,12 +770,18 @@ export default function App({ mode = 'dark', onToggleTheme = () => {} }) {
             />
           </Tooltip>
           <Popover
-            content={contactContent}
-            title="微信扫码联系客服"
+            content={pricingContent}
+            title="计费说明"
             trigger="click"
             placement="bottomRight"
-            open={showContact}
-            onOpenChange={setShowContact}
+          >
+            <Button className="pricing-btn" icon={<DollarOutlined />}>价格</Button>
+          </Popover>
+          <Popover
+            content={contactContent}
+            title="微信扫码联系客服"
+            trigger={['hover', 'click']}
+            placement="bottomRight"
           >
             <Button className="contact-btn" icon={<CustomerServiceOutlined />}>联系客服</Button>
           </Popover>
