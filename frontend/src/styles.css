@@ -587,6 +587,17 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
+/* 悬浮按钮统一走白/半透明底色，primary 下载按钮的默认白色图标会与底色重合导致看不见，
+   这里强制图标用主题色，保证在白底上清晰可见。 */
+.img-overlay .ant-btn,
+.img-overlay .ant-btn .anticon {
+  color: var(--accent) !important;
+}
+
+.img-overlay .ant-btn:hover {
+  border-color: var(--accent) !important;
+}
+
 .img-card:hover .img-overlay {
   opacity: 1;
   transform: translateY(0);
